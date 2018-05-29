@@ -1,0 +1,15 @@
+[package]
+name = "name-popularity"
+version = "0.1.0"
+authors = ["Techcable <Techcable@techcable.net>"]
+
+[dependencies]
+# Serde
+serde = "^1"
+serde_derive = "^1"
+# Rocket
+rocket = "^0.3.11"
+rocket_codegen = "^0.3.11"
+rocket_contrib = "^0.3"
+# Better synchronization primitives
+parking_lot = { version = "^0.5.5", features = ["nightly"] }

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+    <head>
+
+        <!-- Required meta tags -->
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+        <!-- Bootstrap CSS -->
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB" crossorigin="anonymous">
+        <!-- Cerulean Theme -->
+        <link href="https://stackpath.bootstrapcdn.com/bootswatch/4.1.1/cerulean/bootstrap.min.css" rel="stylesheet" integrity="sha384-0Mou2qXGeXK7k/Ue/a1hspEVcEP2zCpoQZw8/MPeUgISww+VmDJcy2ri9tX0a6iy" crossorigin="anonymous">
+    </head>
+    <body>
+        <nav class="navbar navbar-expand-lg navbar-light bg-light">
+            <a class="navbar-brand" href="#">Usual Names</a>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav mr-auto">
+                    <li class="nav-item active">
+                        <a class="nav-link" href="#">Home <span class="sr-only">(current)</span></a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        <main role="main" class="container">
+            <div>
+                <h1>Usual Name Tester</h1>
+                <p class="lead">Tell People whether they have a usual name.</p>
+                <p>Based on the official Social Security birth data</p>
+            </div>
+        </main>
+
+        <div class ="container">
+            <div class="row">
+                <form>
+                    <div class="form-group">
+                        <input type="text" class="form-control" id="targetName" placeholder="Salvatore">
+                    </div>
+                    <button id="loadButton" type="button" class="btn btn-primary">Load</button>
+                </form>
+            </div>
+            <!-- The actual table of name data -->
+            <div class="row">
+                <div class="col-lg">
+                    <h4 id="maleNameHeader">Males named 'Salvatore'</h4>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Year</th>
+                                <th scope="col">Rank</th>
+                                <th scope="col">Births</th>
+                            </tr>
+                        </thead>
+                        <tbody id="maleNameTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="col-lg">
+                    <h4 id="femaleNameHeader">Females named 'Salvatore'</h4>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Year</th>
+                                <th scope="col">Rank</th>
+                                <th scope="col">Births</th>
+                            </tr>
+                        </thead>
+                        <tbody id="femaleNameTableBody">
+
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- JQuery and Bootstrap Javascript -->
+        <script src="http://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.min.js" integrity="sha384-smHYKdLADwkXOn1EmN1qk/HfnUcbVRZyYmZ4qpPea6sjB/pTJ0euyQp0Mk8ck+5T" crossorigin="anonymous"></script>
+
+        <!-- Our Javascript -->
+        <script src="index.js"></script>
+    </body>
+</html>
