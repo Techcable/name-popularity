@@ -87,11 +87,6 @@ $(function() {
         }
         return name
     }
-    $("#targetName").on('keyup', function() {
-        const name = currentName();
-        $("#maleNameHeader").text(`Males named '${name}'`);
-        $("#femaleNameHeader").text(`Females named '${name}'`);
-    });
     function appendAverageRow(table, data_list) {
         var total_births = 0;
         var total_ranks = 0;
@@ -136,13 +131,15 @@ $(function() {
     }
     $("#loadButton").on('click', function() {
         console.log("Clicked");
+        $("#maleNameHeader").text(`Males named '${currentName()}'`);
+        $("#femaleNameHeader").text(`Females named '${currentName()}'`);
+        var maleNameTable = $("#maleNameTableBody");
+        var femaleNameTable = $("#femaleNameTableBody");
+        maleNameTable.empty();
+        femaleNameTable.empty();
         var request = new NameRequest(currentName(), DEFAULT_YEARS);
         request.run(function(response) {
             console.log(`Received response ${JSON.stringify(response)}`);
-            var maleNameTable = $("#maleNameTableBody");
-            var femaleNameTable = $("#femaleNameTableBody");
-            maleNameTable.empty();
-            femaleNameTable.empty();
             var male_data = new Array();
             var female_data = new Array();
             for (let [year, data] of response.years) {
