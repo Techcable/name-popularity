@@ -90,7 +90,7 @@ $(function() {
     $("#targetName").on('keyup', function() {
         const name = currentName();
         $("#maleNameHeader").text(`Males named '${name}'`);
-        $("#femaleNameHeader").text(`Males named '${name}'`);
+        $("#femaleNameHeader").text(`Females named '${name}'`);
     });
     function appendAverageRow(table, data_list) {
         var total_births = 0;
