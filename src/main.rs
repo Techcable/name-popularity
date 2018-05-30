@@ -17,12 +17,21 @@ use rocket::response::{NamedFile};
 use rocket_contrib::Json;
 use parking_lot::Mutex;
 
-use name_popularity::{NameDatabase, GenderedData, NameData, ParseError};
+use name_popularity::{normalize_name, NameDatabase, GenderedData, NameData, ParseError};
 
 #[derive(Debug, Deserialize)]
 struct NameRequest {
     years: Vec<u32>,
     name: String
+}
+impl NameRequest {
+    #[inline]
+    fn normalized(self) -> NameRequest {
+        NameRequest {
+            years: self.years,
+            name: normalize_name(&self.name)
+        }
+    }
 }
 #[derive(Debug, Serialize)]
 struct NameResponse {
@@ -54,7 +63,7 @@ const REQUEST_LIMIT: usize = 64;
 
 #[post("/api/load", format = "application/json", data = "<request>")]
 fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
-    let request: NameRequest = request.into_inner();
+    let request: NameRequest = request.into_inner().normalized();
     let mut lock = DATABASE.lock();
     let database = if lock.is_some() {
         lock.as_mut().unwrap()

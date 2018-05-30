@@ -42,6 +42,18 @@ impl NameDatabase {
     }
 }
 
+pub fn normalize_name(target: &str) -> String {
+    let mut original_chars = target.trim().chars();
+    let mut result = String::new();
+    if let Some(first) = original_chars.next() {
+        result.extend(first.to_uppercase());
+        for c in original_chars {
+            result.extend(c.to_lowercase());
+        }
+    }
+    result
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Gender {
