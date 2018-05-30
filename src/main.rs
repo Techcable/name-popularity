@@ -35,7 +35,8 @@ impl NameRequest {
 }
 #[derive(Debug, Serialize)]
 struct NameResponse {
-    years: HashMap<u32, GenderedData<Option<NameData>>>
+    years: HashMap<u32, GenderedData<Option<NameData>>>,
+    similar_names: Vec<String>
 }
 
 #[get("/")]
@@ -60,6 +61,7 @@ fn database_location() -> Result<PathBuf, RequestError> {
 }
 static DATABASE: Mutex<Option<NameDatabase>> = Mutex::new(None);
 const REQUEST_LIMIT: usize = 64;
+const RETURNED_SIMILAR_NAMES: usize = 6;
 
 #[post("/api/load", format = "application/json", data = "<request>")]
 fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
@@ -74,24 +76,35 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
     if request.years.len() > REQUEST_LIMIT {
         return Err(RequestError::TooManyYears(request.years.len()))
     }
-    let mut response = NameResponse { years: HashMap::with_capacity(request.years.len()) };
+    let mut response = NameResponse {
+        years: HashMap::with_capacity(request.years.len()),
+        similar_names: Vec::with_capacity(RETURNED_SIMILAR_NAMES)
+    };
     for &year in &request.years {
-        let data = database.load_year(year)
-            .map_err(|cause| RequestError::ParseYear { year, cause })?;
+        let data = database.load_year(year)?;
         response.years.insert(year, data.as_ref().map(|year| {
             year.get(&*request.name).cloned()
         }));
     }
+    response.similar_names.extend(
+        database.determine_similar_names(&request.years, &request.name)
+            .iter().take(RETURNED_SIMILAR_NAMES).cloned()
+            .filter(|&name| name != request.name)
+            .map(String::from)
+    );
     Ok(Json(response))
 }
 #[derive(Debug)]
 enum RequestError {
-    ParseYear {
-        year: u32,
-        cause: ParseError
-    },
+    ParseYear(ParseError),
     MissingDatabase,
     TooManyYears(usize)
+}
+impl From<ParseError> for RequestError {
+    #[inline]
+    fn from(cause: ParseError) -> Self {
+        RequestError::ParseYear(cause)
+    }
 }
 
 

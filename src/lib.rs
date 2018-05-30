@@ -6,9 +6,10 @@ use std::hash::Hash;
 use std::str::FromStr;
 use std::path::{PathBuf};
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::collections::hash_map::Entry;
 
+extern crate strsim;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -16,12 +17,13 @@ extern crate serde_derive;
 pub struct NameDatabase {
     location: PathBuf,
     years: HashMap<u32, GenderedData<YearData>>,
+    known_names: HashSet<String>
 }
 impl NameDatabase {
     #[inline]
     pub fn new(location: PathBuf) -> Result<NameDatabase, io::Error> {
         if location.exists() {
-            Ok(NameDatabase { location, years: HashMap::new() })
+            Ok(NameDatabase { location, years: HashMap::new(), known_names: HashSet::new() })
         } else {
             Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -35,10 +37,30 @@ impl NameDatabase {
                 &*entry.into_mut()
             },
             Entry::Vacant(entry) => {
-                let file = File::open(self.location.join(format!("yob{}.txt", year)))?;
-                &*entry.insert(parse_year(BufReader::new(file))?)
+                let file = File::open(self.location.join(format!("yob{}.txt", year)))
+                    .map_err(|cause| ParseError { kind: cause.into(), year })?;
+                let year = parse_year(BufReader::new(file))
+                    .map_err(|kind| ParseError { kind, year })?;
+                self.known_names.extend(year.male.name_list.iter()
+                    .map(|data| &data.name).cloned());
+                self.known_names.extend(year.female.name_list.iter()
+                    .map(|data| &data.name).cloned());
+                &*entry.insert(year)
             }
         })
+    }
+    pub fn determine_similar_names(&self, years: &[u32], name: &str) -> Vec<&str> {
+        let mut similar_names = self.known_names.iter()
+            .map(String::as_str)
+            .filter(|&name| years.iter().any(|&year| {
+                let year = &self.years[&year];
+                year.male.get(name).is_some() || year.female.get(name).is_some()
+            }))
+            .collect::<Vec<&str>>();
+        similar_names.sort_by_key(|&other| {
+            (strsim::damerau_levenshtein(other, name), other)
+        });
+        similar_names
     }
 }
 
@@ -94,6 +116,10 @@ impl<T> GenderedData<T> {
     pub fn iter<'a>(&'a self) -> impl Iterator<Item=(Gender, &'a T)> + 'a {
         iter::once((Gender::Male, &self.male))
             .chain(iter::once((Gender::Female, &self.female)))
+    }
+    #[inline]
+    pub fn values<'a>(&'a self) -> impl Iterator<Item=&'a T> + 'a {
+        self.iter().map(|(_, value)| value)
     }
     #[inline]
     pub fn map<U, F: FnMut(T) -> U>(self, mut func: F) -> GenderedData<U> {
@@ -174,8 +200,8 @@ fn unpack_single<T, I: IntoIterator<Item=T>>(iter: I) -> Option<T> {
         None
     }
 }
-fn parse_line(text: &str) -> Result<NameData, ParseError> {
-    let  invalid_line = || ParseError::InvalidLine(text.into());
+fn parse_line(text: &str) -> Result<NameData, ParseErrorKind> {
+    let  invalid_line = || ParseErrorKind::InvalidLine(text.into());
     let [name, gender, count] = unpack3::<&str, _>(text.split(','))
         .ok_or_else(invalid_line)?;
     Ok(NameData {
@@ -186,7 +212,7 @@ fn parse_line(text: &str) -> Result<NameData, ParseError> {
         count: u32::from_str(count).map_err(|_| invalid_line())?
     })
 }
-pub fn parse_year<R: BufRead>(mut reader: R) -> Result<GenderedData<YearData>, ParseError> {
+pub fn parse_year<R: BufRead>(mut reader: R) -> Result<GenderedData<YearData>, ParseErrorKind> {
     let mut buffer = String::new();
     let mut name_lists = GenderedData::<Vec<_>>::default();
     loop {
@@ -202,21 +228,28 @@ pub fn parse_year<R: BufRead>(mut reader: R) -> Result<GenderedData<YearData>, P
     Ok(name_lists.map(YearData::new))
 }
 #[derive(Debug)]
-pub enum ParseError {
-    InvalidLine(String),
-    IoError(io::Error)
-}
-impl From<io::Error> for ParseError {
-    #[inline]
-    fn from(cause: io::Error) -> Self {
-        ParseError::IoError(cause)
-    }
+pub struct ParseError {
+    pub year: u32,
+    pub kind: ParseErrorKind
 }
 impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            ParseError::InvalidLine(ref line) => write!(f, "Invalid line {:?}", line),
-            ParseError::IoError(ref cause) => write!(f, "{}", cause),
+        write!(f, "Unable to parse year {}", self.year)?;
+        match self.kind {
+            ParseErrorKind::InvalidLine(ref line) => write!(f, "invalid line {:?}", line),
+            ParseErrorKind::IoError(ref cause) => write!(f, "{}", cause),
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum ParseErrorKind {
+    InvalidLine(String),
+    IoError(io::Error)
+}
+impl From<io::Error> for ParseErrorKind {
+    #[inline]
+    fn from(cause: io::Error) -> Self {
+        ParseErrorKind::IoError(cause)
     }
 }

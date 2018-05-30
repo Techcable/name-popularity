@@ -30,8 +30,9 @@ $(function() {
         }
     }
     class NameResponse {
-        constructor(years) {
+        constructor(years, similarNames) {
             this.years = years;
+            this.similarNames = similarNames;
         }
         static parse(data) {
             var years = new Map()
@@ -40,7 +41,7 @@ $(function() {
                 var data = YearData.parse(entry[1]);
                 years.set(year, data);
             });
-            return new NameResponse(years)
+            return new NameResponse(years, data["similar_names"])
         }
     }
     class NameRequest {
@@ -133,13 +134,19 @@ $(function() {
         console.log("Clicked");
         $("#maleNameHeader").text(`Males named '${currentName()}'`);
         $("#femaleNameHeader").text(`Females named '${currentName()}'`);
+        $("#similarNameHeader").text(`Names similar to '${currentName()}'`);
+        var similarNameList = $("#similarNames");
         var maleNameTable = $("#maleNameTableBody");
         var femaleNameTable = $("#femaleNameTableBody");
+        similarNameList.empty();
         maleNameTable.empty();
         femaleNameTable.empty();
         var request = new NameRequest(currentName(), DEFAULT_YEARS);
         request.run(function(response) {
             console.log(`Received response ${JSON.stringify(response)}`);
+            for (let similarName of response.similarNames) {
+                similarNameList.append(`<li>${similarName}</li>`);
+            }
             var male_data = new Array();
             var female_data = new Array();
             for (let [year, data] of response.years) {
