@@ -189,6 +189,11 @@ $(function() {
             </tr>`)
         }
     }
+    $("#targetNameForm").on('submit', function(event) {
+        console.log(`Submitted ${currentName()}`);
+        $("#loadButton").trigger('click');
+        event.preventDefault();
+    })
     $("#loadButton").on('click', function() {
         console.log("Clicked");
         const name = currentName();
@@ -223,8 +228,12 @@ $(function() {
                 }
                 return cmp
             });
-            console.assert(similarNames[0].name == name, `Expected ${name} but got ${similarNames[0].name}`);
-            similarNames = similarNames.slice(1, DEFAULT_SIMILAR_NAMES + 1);
+            if (similarNames[0].name == name) {
+                similarNames = similarNames.slice(1, DEFAULT_SIMILAR_NAMES + 1);
+            } else {
+                console.log(`Expected ${name} but got ${similarNames[0].name}`);
+                similarNames = similarNames.slice(0, DEFAULT_SIMILAR_NAMES);
+            }
             console.log(`Determined similar names of ${similarNames.map(name => name.name)}`);
             $("#maleNameSpinner").removeClass();
             $("#femaleNameSpinner").removeClass();
