@@ -13,5 +13,3 @@ rocket_codegen = "^0.3.11"
 rocket_contrib = "^0.3"
 # Better synchronization primitives
 parking_lot = { version = "^0.5.5", features = ["nightly"] }
-# Similar name checker since benjamin can't spell
-strsim = "^0.7"

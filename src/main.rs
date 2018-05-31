@@ -36,7 +36,7 @@ impl NameRequest {
 #[derive(Debug, Serialize)]
 struct NameResponse {
     years: HashMap<u32, GenderedData<Option<NameData>>>,
-    similar_names: Vec<String>
+    known_names: Vec<String>
 }
 
 #[get("/")]
@@ -61,7 +61,6 @@ fn database_location() -> Result<PathBuf, RequestError> {
 }
 static DATABASE: Mutex<Option<NameDatabase>> = Mutex::new(None);
 const REQUEST_LIMIT: usize = 64;
-const RETURNED_SIMILAR_NAMES: usize = 6;
 
 #[post("/api/load", format = "application/json", data = "<request>")]
 fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
@@ -78,7 +77,7 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
     }
     let mut response = NameResponse {
         years: HashMap::with_capacity(request.years.len()),
-        similar_names: Vec::with_capacity(RETURNED_SIMILAR_NAMES)
+        known_names: Vec::new()
     };
     for &year in &request.years {
         let data = database.load_year(year)?;
@@ -86,12 +85,8 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
             year.get(&*request.name).cloned()
         }));
     }
-    response.similar_names.extend(
-        database.determine_similar_names(&request.years, &request.name)
-            .iter().take(RETURNED_SIMILAR_NAMES).cloned()
-            .filter(|&name| name != request.name)
-            .map(String::from)
-    );
+    response.known_names = database.determine_known_names(&request.years)
+        .map(String::from).collect();
     Ok(Json(response))
 }
 #[derive(Debug)]

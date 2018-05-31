@@ -9,7 +9,6 @@ use std::borrow::Borrow;
 use std::collections::{HashSet, HashMap};
 use std::collections::hash_map::Entry;
 
-extern crate strsim;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -49,18 +48,13 @@ impl NameDatabase {
             }
         })
     }
-    pub fn determine_similar_names(&self, years: &[u32], name: &str) -> Vec<&str> {
-        let mut similar_names = self.known_names.iter()
+    pub fn determine_known_names<'a: 'b, 'b>(&'a self, years: &'b [u32]) -> impl Iterator<Item=&'a str> + 'b {
+        self.known_names.iter()
             .map(String::as_str)
-            .filter(|&name| years.iter().any(|&year| {
+            .filter(move |&name| years.iter().any(move |&year| {
                 let year = &self.years[&year];
                 year.male.get(name).is_some() || year.female.get(name).is_some()
             }))
-            .collect::<Vec<&str>>();
-        similar_names.sort_by_key(|&other| {
-            (strsim::damerau_levenshtein(other, name), other)
-        });
-        similar_names
     }
 }
 

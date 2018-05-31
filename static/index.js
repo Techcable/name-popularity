@@ -1,5 +1,63 @@
 $(function() {
     "use strict";
+    function damerau_levenshtein(first, second) {
+        "use strict";
+        // TODO: Support non-BMP characters (like that's ever going to happen)
+        if (first == second) return 0;
+        var firstLen = first.length;
+        var secondLen = second.length;
+        if (firstLen == 0) return secondLen;
+        if (secondLen == 0) return firstLen;
+
+
+        var distances = [];
+        for (var i = 0; i < firstLen + 2; i++) {
+            distances.push(Array(secondLen + 2).fill(0));
+        }
+        const maxDistance = firstLen + secondLen;
+        distances[0][0] = maxDistance;
+
+        for (var i = 0; i < firstLen + 1; i++) {
+            distances[i + 1][0] = maxDistance;
+            distances[i + 1][1] = i;
+        }
+        for (var j = 0; j < secondLen + 1; j++) {
+            distances[0][j + 1] = maxDistance;
+            distances[1][j + 1] = j;
+        }
+
+        var chars = new Map();
+
+        for (var i = 1; i < firstLen + 1; i++) {
+            var db = 0;
+            for (var j = 1; j < secondLen + 1; j++) {
+                var k = chars.get(second.charAt(j - 1));
+                if (typeof k == 'undefined') {
+                    k = 0;
+                }
+                const l = db;
+                var cost = 1;
+                if (first[i - 1] == second[j - 1]) {
+                    cost = 0;
+                    db = j;
+                }
+
+                const substitutionCost = distances[i][j] + cost;
+                const insertionCost = distances[i][j + 1] + 1;
+                const deletionCost = distances[i + 1][j] + 1;
+                const transpositionCost = distances[k][l] +
+                    (i - k -1) + 1 + (j - l - 1);
+                distances[i + 1][j + 1] = Math.min(
+                    substitutionCost,
+                    insertionCost,
+                    deletionCost,
+                    transpositionCost
+                );
+            }
+            chars.set(first[i - 1], i);
+        }
+        return distances[firstLen + 1][secondLen + 1];
+    }
     class NameData {
         constructor(name, gender, rank, count) {
             this.name = name;
@@ -30,9 +88,9 @@ $(function() {
         }
     }
     class NameResponse {
-        constructor(years, similarNames) {
+        constructor(years, knownNames) {
             this.years = years;
-            this.similarNames = similarNames;
+            this.knownNames = knownNames;
         }
         static parse(data) {
             var years = new Map()
@@ -41,7 +99,7 @@ $(function() {
                 var data = YearData.parse(entry[1]);
                 years.set(year, data);
             });
-            return new NameResponse(years, data["similar_names"])
+            return new NameResponse(years, data["known_names"])
         }
     }
     class NameRequest {
@@ -80,6 +138,7 @@ $(function() {
     const DEFAULT_YEARS = [...Array(18).keys()].map(i => i + 2000);
     // One of Benjamin's original obsessive names (besides the last name Shemermino)
     const DEFAULT_NAME = "Salvatore";
+    const DEFAULT_SIMILAR_NAMES = 5;
     function currentName() {
         var name = $("#targetName").val();
         console.log(`Raw targetName ${name}`)
@@ -132,9 +191,10 @@ $(function() {
     }
     $("#loadButton").on('click', function() {
         console.log("Clicked");
-        $("#maleNameHeader").text(`Males named '${currentName()}'`);
-        $("#femaleNameHeader").text(`Females named '${currentName()}'`);
-        $("#similarNameHeader").text(`Names similar to '${currentName()}'`);
+        const name = currentName();
+        $("#maleNameHeader").text(`Males named '${name}'`);
+        $("#femaleNameHeader").text(`Females named '${name}'`);
+        $("#similarNameHeader").text(`Names similar to '${name}'`);
         var similarNameList = $("#similarNames");
         var maleNameTable = $("#maleNameTableBody");
         var femaleNameTable = $("#femaleNameTableBody");
@@ -143,9 +203,28 @@ $(function() {
         femaleNameTable.empty();
         var request = new NameRequest(currentName(), DEFAULT_YEARS);
         request.run(function(response) {
-            console.log(`Received response ${JSON.stringify(response)}`);
-            for (let similarName of response.similarNames) {
-                similarNameList.append(`<li>${similarName}</li>`);
+            //console.log(`Received response ${JSON.stringify(response)}`);
+            var similarNames = response.knownNames.map(function(targetName) {
+                const similarity = damerau_levenshtein(targetName, name);
+                //console.log(`Determined similarity of ${targetName} => ${similarity}`);
+                return { name: targetName, similarity: similarity };
+            });
+            similarNames.sort(function(a, b) {
+                var cmp = a.similarity - b.similarity;
+                if (cmp == 0) {
+                    if (a.name < b.name) {
+                        cmp = -1;
+                    } else if (a.name > b.name) {
+                        cmp = 1;
+                    }
+                }
+                return cmp
+            });
+            console.assert(similarNames[0].name == name, `Expected ${name} but got ${similarNames[0].name}`);
+            similarNames = similarNames.slice(1, DEFAULT_SIMILAR_NAMES + 1);
+            console.log(`Determined similar names of ${similarNames.map(name => name.name)}`);
+            for (let similarName of similarNames) {
+                similarNameList.append(`<li>${similarName.name}</li>`);
             }
             var male_data = new Array();
             var female_data = new Array();
