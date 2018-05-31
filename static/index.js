@@ -195,6 +195,9 @@ $(function() {
         $("#maleNameHeader").text(`Males named '${name}'`);
         $("#femaleNameHeader").text(`Females named '${name}'`);
         $("#similarNameHeader").text(`Names similar to '${name}'`);
+        $("#maleNameSpinner").addClass("fa fa-spinner fa-spin");
+        $("#femaleNameSpinner").addClass("fa fa-spinner fa-spin");
+        $("#similarNameSpinner").addClass("fa fa-spinner fa-spin");
         var similarNameList = $("#similarNames");
         var maleNameTable = $("#maleNameTableBody");
         var femaleNameTable = $("#femaleNameTableBody");
@@ -223,6 +226,9 @@ $(function() {
             console.assert(similarNames[0].name == name, `Expected ${name} but got ${similarNames[0].name}`);
             similarNames = similarNames.slice(1, DEFAULT_SIMILAR_NAMES + 1);
             console.log(`Determined similar names of ${similarNames.map(name => name.name)}`);
+            $("#maleNameSpinner").removeClass();
+            $("#femaleNameSpinner").removeClass();
+            $("#similarNameSpinner").removeClass();
             for (let similarName of similarNames) {
                 similarNameList.append(`<li>${similarName.name}</li>`);
             }
