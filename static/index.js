@@ -214,6 +214,7 @@ $(function() {
         $("#loadButton").trigger('click');
         event.preventDefault();
     })
+    var nameChart = null;
     $("#loadButton").on('click', function() {
         console.log("Clicked");
         const name = currentName();
@@ -229,11 +230,14 @@ $(function() {
         var similarNameList = $("#similarNames");
         var maleNameTable = $("#maleNameTableBody");
         var femaleNameTable = $("#femaleNameTableBody");
-        var nameChart = $("#nameChart");
+        var nameChartCtx = $("#nameChart");
         similarNameList.empty();
         maleNameTable.empty();
         femaleNameTable.empty();
-        nameChart.empty();
+        if (nameChart !== null) {
+            nameChart.destroy();
+            nameChart = null;
+        }
         var request = new NameRequest(currentName(), years);
         request.run(function(response) {
             //console.log(`Received response ${JSON.stringify(response)}`);
@@ -278,7 +282,8 @@ $(function() {
                 }
             }
             console.log(`Male births data ${JSON.stringify(maleBirthData)}`);
-            var chart = new Chart(nameChart, {
+            if (nameChart !== null) throw new Error(`Expected null but got ${chart}`);
+            nameChart = new Chart(nameChartCtx, {
                 type: 'line',
                 data: {
                     labels: years.slice(),                    
@@ -312,7 +317,6 @@ $(function() {
                     }
                 }
             });
-            console.log(``)
             for (let similarName of similarNames) {
                 similarNameList.append(`<li>${similarName.name}</li>`);
             }
