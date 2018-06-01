@@ -218,8 +218,8 @@ $(function() {
         console.log("Clicked");
         const name = currentName();
         const startYear = currentStartYear();
-        const years = [...Array(CURRENT_YEAR - startYear).keys()].map(i => i + startYear);
         if (startYear == null) return;
+        const years = [...Array(CURRENT_YEAR - startYear).keys()].map(i => i + startYear);
         $("#maleNameHeader").text(`Males named '${name}'`);
         $("#femaleNameHeader").text(`Females named '${name}'`);
         $("#similarNameHeader").text(`Names similar to '${name}'`);
@@ -229,9 +229,11 @@ $(function() {
         var similarNameList = $("#similarNames");
         var maleNameTable = $("#maleNameTableBody");
         var femaleNameTable = $("#femaleNameTableBody");
+        var nameChart = $("#nameChart");
         similarNameList.empty();
         maleNameTable.empty();
         femaleNameTable.empty();
+        nameChart.empty();
         var request = new NameRequest(currentName(), years);
         request.run(function(response) {
             //console.log(`Received response ${JSON.stringify(response)}`);
@@ -261,6 +263,56 @@ $(function() {
             $("#maleNameSpinner").removeClass();
             $("#femaleNameSpinner").removeClass();
             $("#similarNameSpinner").removeClass();
+            var maleBirthData = [];
+            var femaleBirthData = [];
+            for (let [year, data] of response.years) {
+                if (data.male == null) {
+                    maleBirthData.push(0);
+                } else {
+                    maleBirthData.push(data.male.count);
+                }
+                if (data.female == null) {
+                    femaleBirthData.push(0);
+                } else {
+                    femaleBirthData.push(data.female.count);
+                }
+            }
+            console.log(`Male births data ${JSON.stringify(maleBirthData)}`);
+            var chart = new Chart(nameChart, {
+                type: 'line',
+                data: {
+                    labels: years.slice(),                    
+                    datasets: [
+                        {
+                            label: "Male Births",
+                            data: maleBirthData,
+                            fill: false,
+                            borderColor: 'LightSkyBlue',
+                            backgroundColor: 'SkyBlue',
+                            pointBackgroundColor: 'SkyBlue',
+                        },
+                        {
+                            label: "Female Births",
+                            data: femaleBirthData,
+                            fill: false,
+                            borderColor: 'DeepPink',
+                            backgroundColor: 'HotPink',
+                            pointBackgroundColor: 'HotPink',
+                        }
+                    ],
+                },
+                options: {
+                    scales: {
+                        xAxes: [{
+                            ticks: {
+                                min: startYear,
+                                max: CURRENT_YEAR - 1
+                            }
+                        }]
+                    }
+                }
+            });
+            console.log(``)
             for (let similarName of similarNames) {
                 similarNameList.append(`<li>${similarName.name}</li>`);
             }
