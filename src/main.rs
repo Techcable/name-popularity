@@ -60,7 +60,6 @@ fn database_location() -> Result<PathBuf, RequestError> {
     }
 }
 static DATABASE: Mutex<Option<NameDatabase>> = Mutex::new(None);
-const REQUEST_LIMIT: usize = 64;
 
 #[post("/api/load", format = "application/json", data = "<request>")]
 fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
@@ -72,9 +71,6 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
         *lock = Some(NameDatabase::new(database_location()?).unwrap());
         lock.as_mut().unwrap()
     };
-    if request.years.len() > REQUEST_LIMIT {
-        return Err(RequestError::TooManyYears(request.years.len()))
-    }
     let mut response = NameResponse {
         years: HashMap::with_capacity(request.years.len()),
         known_names: Vec::new()

@@ -135,7 +135,9 @@ $(function() {
             });
         }
     }
-    const DEFAULT_YEARS = [...Array(18).keys()].map(i => i + 2000);
+    const CURRENT_YEAR = 2018;
+    const DEFAULT_START_YEAR = 1940;
+    const MINIMUM_YEAR = 1880;
     // One of Benjamin's original obsessive names (besides the last name Shemermino)
     const DEFAULT_NAME = "Salvatore";
     const DEFAULT_SIMILAR_NAMES = 5;
@@ -146,6 +148,21 @@ $(function() {
             name = DEFAULT_NAME;
         }
         return name
+    }
+    function currentStartYear() {
+        var rawYear = $("#startYear").val();
+        console.log(`Raw startYear ${rawYear}`);
+        if (rawYear == "") {
+            rawYear = DEFAULT_START_YEAR.toString();
+        }
+        var year = Number.parseInt(rawYear);
+        console.log(`Parsed year ${year} from ${rawYear}`)
+        if (!Number.isNaN(year) && year >= MINIMUM_YEAR && year < CURRENT_YEAR) {
+            return year
+        }
+        $("#startYear").val('');
+        alert(`Invalid year '${rawYear}'`);
+        return null;
     }
     function appendAverageRow(table, data_list) {
         var total_births = 0;
@@ -189,6 +206,9 @@ $(function() {
             </tr>`)
         }
     }
+    $("#startYear").attr("min", MINIMUM_YEAR);
+    $("#startYear").attr("max", CURRENT_YEAR - 1);
+    $("#startYear").attr("placeholder", DEFAULT_START_YEAR);
     $("#targetNameForm").on('submit', function(event) {
         console.log(`Submitted ${currentName()}`);
         $("#loadButton").trigger('click');
@@ -197,6 +217,9 @@ $(function() {
     $("#loadButton").on('click', function() {
         console.log("Clicked");
         const name = currentName();
+        const startYear = currentStartYear();
+        const years = [...Array(CURRENT_YEAR - startYear).keys()].map(i => i + startYear);
+        if (startYear == null) return;
         $("#maleNameHeader").text(`Males named '${name}'`);
         $("#femaleNameHeader").text(`Females named '${name}'`);
         $("#similarNameHeader").text(`Names similar to '${name}'`);
@@ -209,7 +232,7 @@ $(function() {
         similarNameList.empty();
         maleNameTable.empty();
         femaleNameTable.empty();
-        var request = new NameRequest(currentName(), DEFAULT_YEARS);
+        var request = new NameRequest(currentName(), years);
         request.run(function(response) {
             //console.log(`Received response ${JSON.stringify(response)}`);
             var similarNames = response.knownNames.map(function(targetName) {
