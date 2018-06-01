@@ -82,14 +82,13 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
         }));
     }
     response.known_names = database.determine_known_names(&request.years)
-        .map(String::from).collect();
+        .cloned().collect();
     Ok(Json(response))
 }
 #[derive(Debug)]
 enum RequestError {
     ParseYear(ParseError),
     MissingDatabase,
-    TooManyYears(usize)
 }
 impl From<ParseError> for RequestError {
     #[inline]

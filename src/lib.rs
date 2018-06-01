@@ -1,4 +1,4 @@
-use std::iter;
+use std::{iter, slice};
 use std::io::{self, BufReader, BufRead};
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
@@ -6,6 +6,7 @@ use std::hash::Hash;
 use std::str::FromStr;
 use std::path::{PathBuf};
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::{HashSet, HashMap};
 use std::collections::hash_map::Entry;
 
@@ -13,16 +14,19 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
+const KNOWN_NAMES_CACHE_LIMIT: usize = 5;
+
 pub struct NameDatabase {
     location: PathBuf,
     years: HashMap<u32, GenderedData<YearData>>,
-    known_names: HashSet<String>
+    known_names: HashSet<String>,
+    known_names_cache: Vec<(Vec<u32>, Vec<String>)>
 }
 impl NameDatabase {
     #[inline]
     pub fn new(location: PathBuf) -> Result<NameDatabase, io::Error> {
         if location.exists() {
-            Ok(NameDatabase { location, years: HashMap::new(), known_names: HashSet::new() })
+            Ok(NameDatabase { location, years: HashMap::new(), known_names: HashSet::new(), known_names_cache: Vec::with_capacity(KNOWN_NAMES_CACHE_LIMIT) })
         } else {
             Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -48,13 +52,25 @@ impl NameDatabase {
             }
         })
     }
-    pub fn determine_known_names<'a: 'b, 'b>(&'a self, years: &'b [u32]) -> impl Iterator<Item=&'a str> + 'b {
-        self.known_names.iter()
-            .map(String::as_str)
-            .filter(move |&name| years.iter().any(move |&year| {
+    fn find_existing_known_names(&self, years: &[u32]) -> Option<slice::Iter<String>> {
+        self.known_names_cache.iter().find(|&(ref existing_years, _)| **existing_years == *years).map(|&(_, ref data)| data.iter())
+    }
+    pub fn determine_known_names(&mut self, years: &[u32]) -> slice::Iter<String> {
+        if self.find_existing_known_names(years).is_some() {
+            return self.find_existing_known_names(years).unwrap();
+        }
+        let data = self.known_names.iter().cloned()
+            .filter(|name| years.iter().any(|&year| {
                 let year = &self.years[&year];
-                year.male.get(name).is_some() || year.female.get(name).is_some()
+                year.male.get(&**name).is_some() || year.female.get(&**name).is_some()
             }))
+            .collect::<Vec<String>>();
+        // Remove LRU
+        while self.known_names_cache.len() >= KNOWN_NAMES_CACHE_LIMIT {
+            self.known_names_cache.remove(0);
+        }
+        self.known_names_cache.push((years.to_owned(), data));
+        self.known_names_cache.last().unwrap().1.iter()
     }
 }
 
