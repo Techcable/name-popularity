@@ -172,13 +172,22 @@ $(function() {
         var similarNameList = $("#similarNames");
         var maleNameTable = $("#maleNameTableBody");
         var femaleNameTable = $("#femaleNameTableBody");
-        var nameChartCtx = $("#nameChart");
         similarNameList.empty();
         maleNameTable.empty();
         femaleNameTable.empty();
         if (nameChart !== null) {
+            console.log(`Destroying old chart`);
             nameChart.destroy();
             nameChart = null;
+            /*
+             * We must completely remove the old canvas and create a new one.
+             * Otherwise the two charts will both be active on the same canvas.
+             * This causes the graphs to flicker back and forth whenever the user
+             * hovers where the old graph used to be.
+             * This is clearly a bug in ChartJS since 'destory' should be enough to eliminate the old graph
+             */
+            $("#nameChartDiv").empty();
+            $("#nameChartDiv").append(`<canvas id="nameChart" width="100" height="100">`)
         }
         if (similarityWorker !== null) {
             similarityWorker.terminate();
@@ -215,7 +224,7 @@ $(function() {
             }
             console.log(`Male births data ${JSON.stringify(maleBirthData)}`);
             if (nameChart !== null) throw new Error(`Expected null but got ${chart}`);
-            nameChart = new Chart(nameChartCtx, {
+            nameChart = new Chart($("#nameChart"), {
                 type: 'line',
                 data: {
                     labels: years.slice(),                    
