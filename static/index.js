@@ -420,9 +420,9 @@ $(function() {
                 male_data.push(data.male.data);
                 female_data.push(data.female.data);
                 maleMap.set(year, data.male);
-                femaleMap.set(year, data.male);
+                femaleMap.set(year, data.female);
             }
-            $("#verdictSpinner").removeClass();
+            $("#KierstenverdictSpinner").removeClass();
             console.log(`Typical gender ${response.typicalGender}`)
             if (response.typicalGender == null) {
                 $("#verdictList").append(`<li>${name} is so uncommon, social security does not list it. `
