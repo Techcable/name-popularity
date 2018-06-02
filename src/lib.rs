@@ -6,7 +6,6 @@ use std::hash::Hash;
 use std::str::FromStr;
 use std::path::{PathBuf};
 use std::borrow::Borrow;
-use std::cell::RefCell;
 use std::collections::{HashSet, HashMap};
 use std::collections::hash_map::Entry;
 
@@ -123,6 +122,10 @@ impl<T> GenderedData<T> {
         }
     }
     #[inline]
+    pub fn insert(&mut self, gender: Gender, value: T) {
+        *self.get_mut(gender) = value;
+    }
+    #[inline]
     pub fn iter<'a>(&'a self) -> impl Iterator<Item=(Gender, &'a T)> + 'a {
         iter::once((Gender::Male, &self.male))
             .chain(iter::once((Gender::Female, &self.female)))
@@ -132,10 +135,10 @@ impl<T> GenderedData<T> {
         self.iter().map(|(_, value)| value)
     }
     #[inline]
-    pub fn map<U, F: FnMut(T) -> U>(self, mut func: F) -> GenderedData<U> {
+    pub fn map<U, F: FnMut(Gender, T) -> U>(self, mut func: F) -> GenderedData<U> {
         GenderedData {
-            male: func(self.male),
-            female: func(self.female)
+            male: func(Gender::Male, self.male),
+            female: func(Gender::Female, self.female)
         }
     }
     #[inline]
@@ -158,6 +161,7 @@ pub struct YearData {
     #[allow(dead_code)]
     name_list: Vec<NameData>,
     name_table: HashMap<String, NameData>,
+    total_births: u32
 }
 impl YearData {
     pub fn new(name_list: Vec<NameData>) -> YearData {
@@ -166,11 +170,13 @@ impl YearData {
                 assert_eq!(name.rank as usize, rank);
             }
         }
+        let mut total_births = 0;
         let mut gender = None;
         let mut name_table = HashMap::with_capacity(name_list.len());
         for value in &name_list {
             let expected_gender = *gender.get_or_insert(value.gender);
             debug_assert_eq!(expected_gender, value.gender);
+            total_births += value.count;
             match name_table.entry(value.name.clone()) {
                 Entry::Occupied(entry) => {
                     panic!(
@@ -183,7 +189,11 @@ impl YearData {
                 }
             }
         }
-        YearData { name_table, name_list }
+        YearData { name_table, name_list, total_births }
+    }
+    #[inline]
+    pub fn total_births(&self) -> u32 {
+        self.total_births
     }
     #[inline]
     pub fn get<T: Eq + Hash>(&self, name: T) -> Option<&NameData> where T: Borrow<str> {
@@ -235,7 +245,7 @@ pub fn parse_year<R: BufRead>(mut reader: R) -> Result<GenderedData<YearData>, P
         data.rank = name_lists.get(data.gender).len() as u32;
         name_lists.get_mut(data.gender).push(data);
     }
-    Ok(name_lists.map(YearData::new))
+    Ok(name_lists.map(|_, data|YearData::new(data)))
 }
 #[derive(Debug)]
 pub struct ParseError {

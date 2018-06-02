@@ -17,7 +17,7 @@ use rocket::response::{NamedFile};
 use rocket_contrib::Json;
 use parking_lot::Mutex;
 
-use name_popularity::{normalize_name, NameDatabase, GenderedData, NameData, ParseError};
+use name_popularity::{Gender, normalize_name, NameDatabase, GenderedData, NameData, ParseError};
 
 #[derive(Debug, Deserialize)]
 struct NameRequest {
@@ -34,8 +34,16 @@ impl NameRequest {
     }
 }
 #[derive(Debug, Serialize)]
+struct YearResponse {
+    total_births: u32,
+    data: Option<NameData>,
+    ratio: f64,
+}
+#[derive(Debug, Serialize)]
 struct NameResponse {
-    years: HashMap<u32, GenderedData<Option<NameData>>>,
+    years: HashMap<u32, GenderedData<YearResponse>>,
+    peak: GenderedData<Option<u32>>,
+    typical_gender: Option<Gender>,
     known_names: Vec<String>
 }
 
@@ -73,14 +81,53 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
     };
     let mut response = NameResponse {
         years: HashMap::with_capacity(request.years.len()),
-        known_names: Vec::new()
+        known_names: Vec::new(),
+        peak: GenderedData::default(),
+        typical_gender: None,
     };
+    let mut peak = GenderedData::<Option<(u32, u32)>> { male: None, female: None };
     for &year in &request.years {
         let data = database.load_year(year)?;
-        response.years.insert(year, data.as_ref().map(|year| {
-            year.get(&*request.name).cloned()
+        response.years.insert(year, data.as_ref().map(|gender, data| {
+            let total_births = data.total_births();
+            let data = data.get(&*request.name).cloned();
+            let count = data.as_ref().map_or(0, |data| data.count);
+            match *peak.get(gender) {
+                Some((_, old_peak)) => {
+                    if count >= old_peak {
+                        peak.insert(gender, Some((year, count)));
+                    }
+                },
+                None => {
+                    if count > 0 {
+                        peak.insert(gender, Some((year, count)));
+                    }
+                }
+            }
+            let ratio = (count as f64) / (total_births as f64);
+            YearResponse { data, total_births, ratio }
         }));
     }
+    response.typical_gender = match (peak.male, peak.female) {
+        (Some((_, male_peak)), Some((_, female_peak))) => {
+            assert!(male_peak > 0 && female_peak > 0);
+            if male_peak >= female_peak {
+                Some(Gender::Male)
+            } else {
+                Some(Gender::Female)
+            }
+        },
+        (Some((_, male_peak)), None) => {
+            assert!(male_peak > 0);
+            Some(Gender::Male)
+        },
+        (None, Some((_, female_peak))) => {
+            assert!(female_peak > 0);
+            Some(Gender::Female)
+        },
+        (None, None) => None
+    };
+    response.peak = peak.map(|_, opt| opt.map(|(year, _)| year));
     response.known_names = database.determine_known_names(&request.years)
         .cloned().collect();
     Ok(Json(response))
