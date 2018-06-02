@@ -349,7 +349,7 @@ $(function() {
         var request = new NameRequest(currentName(), years);
         request.run(function(response) {
             if (similarityWorker !== null) throw new Error(`Expected null but got ${similarityWorker}`);
-            console.log(`Received response years ${debugMap(response.years)}`)
+            //console.log(`Received response years ${debugMap(response.years)}`)
             similarityWorker = new Worker('worker.js');
             similarityWorker.postMessage({knownNames: response.knownNames, targetName: name})
             similarityWorker.onmessage = function(e) {
@@ -422,7 +422,7 @@ $(function() {
                 maleMap.set(year, data.male);
                 femaleMap.set(year, data.female);
             }
-            $("#KierstenverdictSpinner").removeClass();
+            $("#verdictSpinner").removeClass();
             console.log(`Typical gender ${response.typicalGender}`)
             if (response.typicalGender == null) {
                 $("#verdictList").append(`<li>${name} is so uncommon, social security does not list it. `
