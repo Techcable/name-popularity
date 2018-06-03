@@ -43,6 +43,7 @@ struct YearResponse {
 struct NameResponse {
     years: HashMap<u32, GenderedData<YearResponse>>,
     peak: GenderedData<Option<u32>>,
+    gender_ratio: Option<f64>,
     typical_gender: Option<Gender>,
     known_names: Vec<String>
 }
@@ -84,14 +85,17 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
         known_names: Vec::new(),
         peak: GenderedData::default(),
         typical_gender: None,
+        gender_ratio: None
     };
     let mut peak = GenderedData::<Option<(u32, u32)>> { male: None, female: None };
+    let mut totals = GenderedData::<u64>::default();
     for &year in &request.years {
         let data = database.load_year(year)?;
         response.years.insert(year, data.as_ref().map(|gender, data| {
             let total_births = data.total_births();
             let data = data.get(&*request.name).cloned();
             let count = data.as_ref().map_or(0, |data| data.count);
+            *totals.get_mut(gender) += count as u64;
             match *peak.get(gender) {
                 Some((_, old_peak)) => {
                     if count >= old_peak {
@@ -108,24 +112,15 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
             YearResponse { data, total_births, ratio }
         }));
     }
-    response.typical_gender = match (peak.male, peak.female) {
-        (Some((_, male_peak)), Some((_, female_peak))) => {
-            assert!(male_peak > 0 && female_peak > 0);
-            if male_peak >= female_peak {
-                Some(Gender::Male)
-            } else {
-                Some(Gender::Female)
-            }
-        },
-        (Some((_, male_peak)), None) => {
-            assert!(male_peak > 0);
-            Some(Gender::Male)
-        },
-        (None, Some((_, female_peak))) => {
-            assert!(female_peak > 0);
-            Some(Gender::Female)
-        },
-        (None, None) => None
+    let grand_total = totals.male + totals.female;
+    response.typical_gender = if grand_total == 0 {
+        None
+    } else if totals.male >= totals.female {
+        response.gender_ratio = Some((totals.male as f64) / (grand_total as f64));
+        Some(Gender::Male)
+    } else {
+        response.gender_ratio = Some((totals.female as f64) / (grand_total as f64));
+        Some(Gender::Female)
     };
     response.peak = peak.map(|_, opt| opt.map(|(year, _)| year));
     response.known_names = database.determine_known_names(&request.years)

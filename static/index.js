@@ -44,11 +44,12 @@ $(function() {
         }
     }
     class NameResponse {
-        constructor(years, knownNames, peak, typicalGender) {
+        constructor(years, knownNames, peak, typicalGender, genderRatio) {
             this.years = years;
             this.knownNames = knownNames;
             this.peak = peak;
             this.typicalGender = typicalGender;
+            this.genderRatio = genderRatio;
         }
         static parse(data) {
             var years = new Map()
@@ -57,7 +58,7 @@ $(function() {
                 var data = YearData.parse(entry[1]);
                 years.set(year, data);
             });
-            return new NameResponse(years, data["known_names"], data["peak"], data["typical_gender"])
+            return new NameResponse(years, data["known_names"], data["peak"], data["typical_gender"], data["gender_ratio"])
         }
     }
     class NameRequest {
@@ -432,7 +433,7 @@ $(function() {
             } else {
                 const peak = response.peak[response.typicalGender];
                 console.log(`peak year for ${response.typicalGender} ${name} is ${peak}`);
-                var peakPopularityLevel, currentPopularityLevel, era, peakRatio, currentRatio, genderName;
+                var peakPopularityLevel, currentPopularityLevel, era, peakRatio, currentRatio, genderName, genderRatioMsg;
                 switch (response.typicalGender) {
                     case 'male': {
                         peakRatio = maleMap.get(peak).ratio;
@@ -441,6 +442,7 @@ $(function() {
                         currentPopularityLevel = determinePopularityLevel(currentRatio);
                         era = determineEra(peak, maleMap);
                         genderName = "boy";
+                        genderRatioMsg = `${Math.floor(response.genderRatio * 100)}% male`;
                         break;
                     }
                     case 'female': {
@@ -450,6 +452,7 @@ $(function() {
                         currentPopularityLevel = determinePopularityLevel(currentRatio);
                         era = determineEra(peak, femaleMap);
                         genderName = "girl";
+                        genderRatioMsg = `${Math.floor(response.genderRatio * 100)}% female`;
                         break;
                     }
                     default:
@@ -462,7 +465,7 @@ $(function() {
                 console.log(`Determined era ${era} named ${ERA_NAMES[era]}`);
                 var peakPopularityName = `${POPULARITY_LEVEL_NAMES[peakPopularityLevel]} name (${formatPopularityLevel(peakRatio)})`;
                 var currentPopularityName = `${POPULARITY_LEVEL_NAMES[currentPopularityLevel]} name (${formatPopularityLevel(currentRatio)})`;
-                $("#verdictList").append(`<li>${name} is typically a ${genderName} name</li>`);
+                $("#verdictList").append(`<li>${name} is typically a ${genderName} name (${genderRatioMsg})</li>`);
                 $('#verdictList').append(`<li>At its peak in ${peak}, ${name} was a ${peakPopularityName}.</li>`);
                 $('#verdictList').append(`<li>Nowadays, ${name} is a ${currentPopularityName}.</li>`);
                 $('#verdictList').append(`<li>${name} is a ${ERA_NAMES[era]} name.</li>`)
