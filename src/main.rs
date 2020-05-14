@@ -1,6 +1,6 @@
-#![feature(plugin, decl_macro)]
-#![plugin(rocket_codegen)]
+#![feature(proc_macro_hygiene, decl_macro)]
 
+#[macro_use]
 extern crate rocket;
 extern crate rocket_contrib;
 extern crate serde;
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
 use rocket::response::{NamedFile};
-use rocket_contrib::Json;
+use rocket_contrib::json::Json;
 use parking_lot::Mutex;
 
 use name_popularity::{Gender, normalize_name, NameDatabase, GenderedData, NameData, ParseError};
