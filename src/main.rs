@@ -12,10 +12,11 @@ extern crate parking_lot;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
+use std::env::exit;
 
 use rocket::response::{NamedFile};
 use rocket_contrib::json::Json;
-use parking_lot::Mutex;
+use once_cell::sync::OnceCell;
 
 use name_popularity::{Gender, normalize_name, NameDatabase, GenderedData, NameData, ParseError};
 
@@ -34,9 +35,16 @@ impl NameRequest {
     }
 }
 #[derive(Debug, Serialize)]
+pub struct NameResponse {
+    name: String,
+    gender: Gender,
+    rank: u32,
+    count: u32
+}
+#[derive(Debug, Serialize)]
 struct YearResponse {
     total_births: u32,
-    data: Option<NameData>,
+    data: Option<NameResponse>,
     ratio: f64,
 }
 #[derive(Debug, Serialize)]
@@ -58,28 +66,12 @@ fn files(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("static/").join(file)).ok()
 }
 
-fn database_location() -> Result<PathBuf, RequestError> {
-    let mut location = ::std::env::home_dir()
-        .ok_or(RequestError::MissingDatabase)?;
-    location.push("names");
-    if location.exists() {
-        Ok(location)
-    } else {
-        Err(RequestError::MissingDatabase)
-    }
-}
-static DATABASE: Mutex<Option<NameDatabase>> = Mutex::new(None);
+static DATABASE: OnceCell<NameDatabase> = OnceCell::new(None);
 
 #[post("/api/load", format = "application/json", data = "<request>")]
 fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
     let request: NameRequest = request.into_inner().normalized();
-    let mut lock = DATABASE.lock();
-    let database = if lock.is_some() {
-        lock.as_mut().unwrap()
-    } else {
-        *lock = Some(NameDatabase::new(database_location()?).unwrap());
-        lock.as_mut().unwrap()
-    };
+    let database = DATABASE.get().expect("Uninitialized database");
     let mut response = NameResponse {
         years: HashMap::with_capacity(request.years.len()),
         known_names: Vec::new(),
@@ -89,8 +81,21 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
     };
     let mut peak = GenderedData::<Option<(u32, u32)>> { male: None, female: None };
     let mut totals = GenderedData::<u64>::default();
+    let data = database.load_name(&*request.name)?;
+    /*
+     * TODO: Doesn't restrict to the requested range of years.
+     * Even if you're specifically requesting names from the early 20th century
+     * it'll include all the modern names made up in the 21st century.
+     *
+     * Maybe we should consider removing the ability to request certian years
+     * and just dump all the data related to the name.
+     * 
+     * I'm also considering just adding a second endpoint for "known names".
+     * That could be heavily cached, since it's pretty much the same for all users.
+     */
+    let known_names = database.determine_known_names();
     for &year in &request.years {
-        let data = database.load_year(year)?;
+        let year_data = 
         response.years.insert(year, data.as_ref().map(|gender, data| {
             let total_births = data.total_births();
             let data = data.get(&*request.name).cloned();
@@ -129,17 +134,44 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
 }
 #[derive(Debug)]
 enum RequestError {
-    ParseYear(ParseError),
-    MissingDatabase,
+    DatabaseError(heed::Error),
 }
-impl From<ParseError> for RequestError {
+impl From<heed::Error> for RequestError {
     #[inline]
-    fn from(cause: ParseError) -> Self {
-        RequestError::ParseYear(cause)
+    fn from(cause: heed::Error) -> Self {
+        RequestError::DatabaseError(cause)
     }
 }
 
 
 fn main() {
+    let args = std::env::args().skip(1).collect::<Vec<String>>();
+    match args.get(0).map(String::as_str) {
+        Some("start-server") => {
+            // USAGE: `name-popularity start-server [database_file]`
+            let database_path = args.get(1).map(Path::new).unwrap_or_else(|| {
+                eprintln!("Please specifiy a database-path to start-server");
+                exit(1);
+            });
+            if !database_path.exists() {
+                eprintln!("Database file doesn't exist");
+                exit(1);
+            }
+            match start_server() {
+                Ok(()) => {},
+                Err(e) => eprintln!("Server failed: {}", e),
+            }
+        }
+        _ => {
+            eprintln!("Please specify a valid sub-command");
+            exit(1);
+        }
+    }
+}
+
+fn start_server(path: &Path) -> anyhow::Result<()> {
+    let database = NameDatabase::new(path.into())?;
+    DATABASE.set(database)
+        .unwrap_or_else(|| unreachable!("Already initialized database {}", path.display()));
     rocket::ignite().mount("/", routes![index, files, name]).launch();
 }
