@@ -74,29 +74,8 @@ impl NameDatabase {
         }
         Ok(result)
     }
-    pub fn determine_known_names(&self, years: &[u32]) -> Result<Vec<String>, ParseError> { 
-        /*
-         * TODO: Remove this horribleness
-         *
-         * Probably should just stop allowing filtering by 'years'.
-         *
-         * We don't use the prepared statement API here,
-         * because we are dynamically building the query at runtime.
-         */
-        let mut query = String::from("SELECT DISTINCT names.name FROM name_counts INNER JOIN names ");
-        query.push_str("on name_counts.name_id == names.id WHERE (name_counts.male_count > 0 OR name_counts.female_count > 0)");
-        query.push_str("AND name_counts.year in (");
-        query.reserve(years.len() * 6);
-        // NOTE: This should not be vulnerable to SQL injection since we only use unsigned integers
-        for (index, &year) in years.iter().enumerate() {
-            if index != 0 {
-                query.push_str(", ");
-            }
-            let mut int_buffer = ::itoa::Buffer::new();
-            query.push_str(int_buffer.format(year));
-        }
-        query.push_str(");");
-        let mut stmt = self.connection.prepare(&*query)?;
+    pub fn list_known_names(&self) -> Result<Vec<String>, ParseError> { 
+        let mut stmt = self.connection.prepare("SELECT name FROM names;")?;
         let mut results = Vec::new();
         while let sqlite::State::Row = stmt.next()? {
             results.push(stmt.read::<String>(0)?);
