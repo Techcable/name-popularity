@@ -5,3 +5,8 @@
 # IntelliJ
 .idea
 *.iml
+
+# Production Data & config
+names/
+names.sqlite
+Rocket.toml
