@@ -43,7 +43,6 @@ struct NameResponse {
     peak: GenderedData<Option<u32>>,
     gender_ratio: Option<f64>,
     typical_gender: Option<Gender>,
-    known_names: Vec<String>
 }
 
 #[get("/")]
@@ -71,13 +70,18 @@ fn open_database() -> Result<NameDatabase, RequestError> {
         .map_err(|cause| RequestError::InvalidDatabase(cause))
 }
 
+#[get("/api/known_names", format = "application/json")]
+fn known_names() -> Result<Json<Vec<String>>, RequestError> {
+    let database = open_database()?;
+    Ok(Json(database.list_known_names()?))
+}
+
 #[post("/api/load", format = "application/json", data = "<request>")]
 fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
     let request: NameRequest = request.into_inner().normalized();
     let database = open_database()?;
     let mut response = NameResponse {
         years: HashMap::with_capacity(request.years.len()),
-        known_names: Vec::new(),
         peak: GenderedData::default(),
         typical_gender: None,
         gender_ratio: None
@@ -120,7 +124,6 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
         Some(Gender::Female)
     };
     response.peak = peak.map(|_, opt| opt.map(|(year, _)| year));
-    response.known_names = database.determine_known_names(&request.years)?;
     Ok(Json(response))
 }
 #[derive(Debug)]
@@ -139,5 +142,5 @@ impl From<ParseError> for RequestError {
 
 
 fn main() {
-    rocket::ignite().mount("/", routes![index, files, name]).launch();
+    rocket::ignite().mount("/", routes![index, known_names, files, name]).launch();
 }

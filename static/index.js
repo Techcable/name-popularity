@@ -42,9 +42,8 @@ $(function() {
         }
     }
     class NameResponse {
-        constructor(years, knownNames, peak, typicalGender, genderRatio) {
+        constructor(years, peak, typicalGender, genderRatio) {
             this.years = years;
-            this.knownNames = knownNames;
             this.peak = peak;
             this.typicalGender = typicalGender;
             this.genderRatio = genderRatio;
@@ -56,7 +55,7 @@ $(function() {
                 var data = YearData.parse(entry[1]);
                 years.set(year, data);
             });
-            return new NameResponse(years, data["known_names"], data["peak"], data["typical_gender"], data["gender_ratio"])
+            return new NameResponse(years, data["peak"], data["typical_gender"], data["gender_ratio"])
         }
     }
     class NameRequest {
@@ -83,6 +82,26 @@ $(function() {
                         var parsed = NameResponse.parse(JSON.parse(result));
                         console.log(`Parsed years ${JSON.parse(result)["years"]} into ${parsed.years.size}`);
                         return parsed;
+                    }
+                }
+            }).done(callback)
+            .fail(function (jqXHR, textStatus, errorThrown) {
+                console.log("Failed: " + errorThrown);
+            }).always(function (a, textStatus, b) {
+                console.log("Final status: " + textStatus);
+            });
+        }
+    }
+    class ListKnownNamesRequest {
+        constructor() {}
+        run(callback) {
+            console.log(`Running request ${JSON.stringify(this.json)}`);
+            $.ajax({
+                url: "api/known_names",
+                method: "GET",
+                converters: {
+                    "text json": function(result) {
+                        return JSON.parse(result);
                     }
                 }
             }).done(callback)
@@ -346,12 +365,11 @@ $(function() {
             similarityWorker.terminate();
             similarityWorker = null;
         }
-        var request = new NameRequest(currentName(), years);
-        request.run(function(response) {
+        // Request known names and run similarity worker
+        new ListKnownNamesRequest().run(function(knownNames) {
             if (similarityWorker !== null) throw new Error(`Expected null but got ${similarityWorker}`);
-            //console.log(`Received response years ${debugMap(response.years)}`)
             similarityWorker = new Worker('worker.js');
-            similarityWorker.postMessage({knownNames: response.knownNames, targetName: name})
+            similarityWorker.postMessage({knownNames: knownNames, targetName: name})
             similarityWorker.onmessage = function(e) {
                 const similarNames = e.data.similarNames;
                 console.log(`Determined similar names of ${similarNames.map(name => name.name)}`);
@@ -360,6 +378,12 @@ $(function() {
                     similarNameList.append(`<li>${similarName.name}</li>`);
                 }
             };
+
+        })
+        // Proceed to run the main request
+        let request = new NameRequest(currentName(), years);
+        request.run(function(response) {
+            //console.log(`Received response years ${debugMap(response.years)}`)
             $("#maleNameSpinner").removeClass();
             $("#femaleNameSpinner").removeClass();
             var maleBirthData = [];
