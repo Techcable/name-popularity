@@ -10,14 +10,17 @@ serde_derive = "1"
 # Rocket
 rocket = "0.4.5"
 # SQlite database
-rusqlite = "0.24"
+#
+# *** WARNING OUTDATED DEPENDENCY ****
+# I have to use it because `rocket_contrib` is outdated
+rusqlite = "0.14"
 # Fast integer maps
 idmap = "0.2"
 
 [dependencies.rocket_contrib]
 version = "0.4"
 default-features = false
-features = ["json"]
+features = ["json", "sqlite_pool"]
 
 [profile.release]
 # Thinlto

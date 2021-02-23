@@ -1,6 +1,5 @@
 use std::iter;
 use std::fmt::{self, Display, Formatter};
-use std::path::Path;
 
 extern crate serde;
 #[macro_use]
@@ -11,23 +10,22 @@ extern crate idmap;
 use idmap::DirectIdMap;
 
 
-pub struct NameDatabase {
-    connection: rusqlite::Connection
+pub struct NameDatabase<'a> {
+    connection: &'a rusqlite::Connection
 }
-impl NameDatabase {
-    pub fn open(location: &Path) -> Result<NameDatabase, rusqlite::Error> {
-        let connection = rusqlite::Connection::open_with_flags(location, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        Ok(NameDatabase { connection })
+impl<'a> NameDatabase<'a> {
+    pub fn from_connection(connection: &'a rusqlite::Connection) -> Self {
+        NameDatabase { connection }
     }
     pub fn load_year_meta(&self, year: u32) -> Result<GenderedData<YearMeta>, ParseError> {
         let mut stmt = self.connection.prepare_cached("SELECT total_males, total_females FROM years WHERE year == ?")?;
-        let mut rows = stmt.query(&[year])?;
-        match rows.next()? {
+        let mut rows = stmt.query(&[&year])?;
+        match rows.next().transpose()? {
             None => return Err(ParseError::MissingResult { year, query_name: "load_year_meta" }),
             Some(row) => {
-                let total_males: u32 = row.get(0)?;
-                let total_females: u32 = row.get(1)?;
-                match rows.next()? {
+                let total_males: u32 = row.get_checked(0)?;
+                let total_females: u32 = row.get_checked(1)?;
+                match rows.next().transpose()? {
                     None => {
                         // Okay -> we had one and only one result
                         Ok(GenderedData {
@@ -49,14 +47,14 @@ impl NameDatabase {
         let mut stmt = self.connection.prepare_cached(r#"SELECT name_counts.year, name_counts.male_count,
             name_counts.female_count, male_rank, female_rank FROM name_counts
             INNER JOIN names ON name_counts.name_id == names.id WHERE names.name == ? AND name_counts.year >= ?"#)?;
-        let mut rows = stmt.query(&[rusqlite::types::Value::Text(name.into()), rusqlite::types::Value::Integer(start_year.into())])?;
+        let mut rows = stmt.query(&[&name, &start_year])?;
         let mut result = DirectIdMap::with_capacity_direct(2020usize.saturating_sub(start_year as usize));
-        while let Some(row) = rows.next()? {
-            let actual_year = row.get::<_, u32>(0)?;
-            let male_count = row.get::<_, u32>(1)?;
-            let female_count = row.get::<_, u32>(2)?;
-            let male_rank = row.get::<_, Option<u32>>(3)?;
-            let female_rank = row.get::<_, Option<u32>>(4)?;
+        while let Some(row) = rows.next().transpose()? {
+            let actual_year = row.get_checked::<_, u32>(0)?;
+            let male_count = row.get_checked::<_, u32>(1)?;
+            let female_count = row.get_checked::<_, u32>(2)?;
+            let male_rank = row.get_checked::<_, Option<u32>>(3)?;
+            let female_rank = row.get_checked::<_, Option<u32>>(4)?;
             result.insert(actual_year.checked_sub(start_year).unwrap(), GenderedData {
                 male: NameData {
                     rank: male_rank,
@@ -74,10 +72,10 @@ impl NameDatabase {
     }
     pub fn list_known_names(&self) -> Result<Vec<String>, ParseError> { 
         let mut stmt = self.connection.prepare_cached("SELECT name FROM names;")?;
-        let mut rows = stmt.query(rusqlite::NO_PARAMS)?;
+        let mut rows = stmt.query(&[])?;
         let mut results = Vec::new();
-        while let Some(row) = rows.next()? {
-            results.push(row.get::<_, String>(0)?);
+        while let Some(row) = rows.next().transpose()? {
+            results.push(row.get_checked::<_, String>(0)?);
         }
         Ok(results)
     }
