@@ -9,59 +9,67 @@ use std::borrow::Borrow;
 use std::collections::{HashSet, HashMap};
 use std::collections::hash_map::Entry;
 
-use serde::{Serialize, Deserialize};
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
-#[derive(Serialize, Deserialize)]
-pub struct NameEntry {
-    start_year: u32,
-    entries: Vec<GenderedData<YearEntry>>
-}
-impl NameEntry {
-    #[inline]
-    pub fn get_by_year(&self, year: u32) -> Option<&GenderedData<YearEntry>> {
-        self.entries.get(self.start_year + year)
-    }
-    #[inline]
-    pub fn iter(&self) -> impl Iterator<Item=(u32, &'_ GenderedData<YearEntry>)> + '_ {
-        assert_eq!(self.entries.male.len(), self.entries.female.len());
-        self.entries.iter().enumerate()
-            .map(|(offset, data)| (self.offset + self.start_year, data))
-    }
-}
-#[derive(Copy, Clone)]
-pub struct YearEntry {
-    /// The number of births this year
-    pub num_births: u32,
-    /// A list of the (1-indexed) popularity ranking of this name this year, starting at $start_year
-    ///
-    /// Must have the same length as `num_births`
-    pub rank: u32,
-}
+const KNOWN_NAMES_CACHE_LIMIT: usize = 5;
 
-type DbValue = head::types::SerdeJson<NameEntry>;
 pub struct NameDatabase {
-    env: head::Env,
-    database: head::Database<head::types::Str, DbValue>,
+    location: PathBuf,
+    years: HashMap<u32, GenderedData<YearData>>,
+    known_names: HashSet<String>,
+    known_names_cache: Vec<(Vec<u32>, Vec<String>)>
 }
 impl NameDatabase {
-    pub fn new(location: PathBuf) -> Result<NameDatabase, head::Error> {
-        let env = head::EnvOptionOptions::new().open(location)?;
-        let database = env.create_database(None)?;
-        Ok(NamedDatabase { env, database })
-    }
-    pub fn load_name(&self, name: &str) -> Result<Option<NameEntry>, head::Error> {
-        let txn = self.read_txn_typed::<DbValue>()?;
-        Ok(self.env.get(&txn, name)?)
-    }
-    pub fn determine_known_names(&self) -> Result<Vec<&'_ str>, head::Error> {
-        let txn = self.read_txn_typed::<DbValue>()?;
-        let mut result = Vec::with_capacity(256);
-        let mut iter = db.iter(&txn)?;
-        for res in iter {
-            let (key, _) = res?;
-            result.push(key);
+    #[inline]
+    pub fn new(location: PathBuf) -> Result<NameDatabase, io::Error> {
+        if location.exists() {
+            Ok(NameDatabase { location, years: HashMap::new(), known_names: HashSet::new(), known_names_cache: Vec::with_capacity(KNOWN_NAMES_CACHE_LIMIT) })
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Missing name database: {}", location.display())
+            ))
         }
-        Ok(result)
+    }
+    pub fn load_year(&mut self, year: u32) -> Result<&GenderedData<YearData>, ParseError> {
+        Ok(match self.years.entry(year) {
+            Entry::Occupied(entry) => {
+                &*entry.into_mut()
+            },
+            Entry::Vacant(entry) => {
+                let file = File::open(self.location.join(format!("yob{}.txt", year)))
+                    .map_err(|cause| ParseError { kind: cause.into(), year })?;
+                let year = parse_year(BufReader::new(file))
+                    .map_err(|kind| ParseError { kind, year })?;
+                self.known_names.extend(year.male.name_list.iter()
+                    .map(|data| &data.name).cloned());
+                self.known_names.extend(year.female.name_list.iter()
+                    .map(|data| &data.name).cloned());
+                &*entry.insert(year)
+            }
+        })
+    }
+    fn find_existing_known_names(&self, years: &[u32]) -> Option<slice::Iter<String>> {
+        self.known_names_cache.iter().find(|&(ref existing_years, _)| **existing_years == *years).map(|&(_, ref data)| data.iter())
+    }
+    pub fn determine_known_names(&mut self, years: &[u32]) -> slice::Iter<String> {
+        if self.find_existing_known_names(years).is_some() {
+            return self.find_existing_known_names(years).unwrap();
+        }
+        let data = self.known_names.iter().cloned()
+            .filter(|name| years.iter().any(|&year| {
+                let year = &self.years[&year];
+                year.male.get(&**name).is_some() || year.female.get(&**name).is_some()
+            }))
+            .collect::<Vec<String>>();
+        // Remove LRU
+        while self.known_names_cache.len() >= KNOWN_NAMES_CACHE_LIMIT {
+            self.known_names_cache.remove(0);
+        }
+        self.known_names_cache.push((years.to_owned(), data));
+        self.known_names_cache.last().unwrap().1.iter()
     }
 }
 
@@ -142,7 +150,13 @@ impl<T> GenderedData<T> {
     }
 }
 
-#[deprecated(note = "Legacy text database")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NameData {
+    pub name: String,
+    pub gender: Gender,
+    pub rank: u32,
+    pub count: u32
+}
 pub struct YearData {
     #[allow(dead_code)]
     name_list: Vec<NameData>,
