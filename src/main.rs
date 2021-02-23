@@ -2,6 +2,7 @@
 
 #[macro_use]
 extern crate rocket;
+#[macro_use]
 extern crate rocket_contrib;
 extern crate serde;
 #[macro_use]
@@ -16,6 +17,15 @@ use rocket::response::{NamedFile};
 use rocket_contrib::json::Json;
 
 use name_popularity::{Gender, normalize_name, NameDatabase, GenderedData, NameData, ParseError};
+
+#[database("sqlite_names")]
+struct NamesDBConnection(rusqlite::Connection);
+impl NamesDBConnection {
+    #[inline]
+    pub fn as_lib(&self) -> NameDatabase<'_> {
+        NameDatabase::from_connection(&*self)
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct NameRequest {
@@ -55,31 +65,16 @@ fn files(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("static/").join(file)).ok()
 }
 
-fn database_location() -> Result<PathBuf, RequestError> {
-    let mut location = ::std::env::home_dir()
-        .ok_or(RequestError::MissingDatabase)?;
-    location.push("names.sqlite");
-    if location.is_file() {
-        Ok(location)
-    } else {
-        Err(RequestError::MissingDatabase)
-    }
-}
-fn open_database() -> Result<NameDatabase, RequestError> {
-    NameDatabase::open(&database_location()?)
-        .map_err(|cause| RequestError::InvalidDatabase(cause))
-}
-
 #[get("/api/known_names", format = "application/json")]
-fn known_names() -> Result<Json<Vec<String>>, RequestError> {
-    let database = open_database()?;
+fn known_names(conn: NamesDBConnection) -> Result<Json<Vec<String>>, RequestError> {
+    let database = conn.as_lib();
     Ok(Json(database.list_known_names()?))
 }
 
 #[post("/api/load", format = "application/json", data = "<request>")]
-fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
+fn name(database: NamesDBConnection, request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
     let request: NameRequest = request.into_inner().normalized();
-    let database = open_database()?;
+    let database = database.as_lib();
     let mut response = NameResponse {
         years: HashMap::with_capacity(request.years.len()),
         peak: GenderedData::default(),
@@ -129,8 +124,6 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
 #[derive(Debug)]
 enum RequestError {
     ParseYear(ParseError),
-    MissingDatabase,
-    InvalidDatabase(rusqlite::Error),
     RequestedZeroYears
 }
 impl From<ParseError> for RequestError {
@@ -142,5 +135,7 @@ impl From<ParseError> for RequestError {
 
 
 fn main() {
-    rocket::ignite().mount("/", routes![index, known_names, files, name]).launch();
+    rocket::ignite()
+        .attach(NamesDBConnection::fairing())
+        .mount("/", routes![index, known_names, files, name]).launch();
 }
