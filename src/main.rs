@@ -7,7 +7,6 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate name_popularity;
-extern crate parking_lot;
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -15,7 +14,6 @@ use std::collections::HashMap;
 
 use rocket::response::{NamedFile};
 use rocket_contrib::json::Json;
-use parking_lot::Mutex;
 
 use name_popularity::{Gender, normalize_name, NameDatabase, GenderedData, NameData, ParseError};
 
@@ -61,25 +59,22 @@ fn files(file: PathBuf) -> Option<NamedFile> {
 fn database_location() -> Result<PathBuf, RequestError> {
     let mut location = ::std::env::home_dir()
         .ok_or(RequestError::MissingDatabase)?;
-    location.push("names");
-    if location.exists() {
+    location.push("names.sqlite");
+    if location.is_file() {
         Ok(location)
     } else {
         Err(RequestError::MissingDatabase)
     }
 }
-static DATABASE: Mutex<Option<NameDatabase>> = Mutex::new(None);
+fn open_database() -> Result<NameDatabase, RequestError> {
+    NameDatabase::open(&database_location()?)
+        .map_err(|cause| RequestError::InvalidDatabase(cause))
+}
 
 #[post("/api/load", format = "application/json", data = "<request>")]
 fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
     let request: NameRequest = request.into_inner().normalized();
-    let mut lock = DATABASE.lock();
-    let database = if lock.is_some() {
-        lock.as_mut().unwrap()
-    } else {
-        *lock = Some(NameDatabase::new(database_location()?).unwrap());
-        lock.as_mut().unwrap()
-    };
+    let database = open_database()?;
     let mut response = NameResponse {
         years: HashMap::with_capacity(request.years.len()),
         known_names: Vec::new(),
@@ -89,12 +84,14 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
     };
     let mut peak = GenderedData::<Option<(u32, u32)>> { male: None, female: None };
     let mut totals = GenderedData::<u64>::default();
+    let start_year = request.years.iter().cloned().min().ok_or(RequestError::RequestedZeroYears)?;
+    let data_map = database.list_name_data(&*request.name, start_year)?;
     for &year in &request.years {
-        let data = database.load_year(year)?;
+        let meta = database.load_year_meta(year)?;
+        let data = data_map.get(year - start_year).cloned().unwrap_or_default();
         response.years.insert(year, data.as_ref().map(|gender, data| {
-            let total_births = data.total_births();
-            let data = data.get(&*request.name).cloned();
-            let count = data.as_ref().map_or(0, |data| data.count);
+            let total_births = meta.male.total_births + meta.female.total_births;
+            let count = data.count;
             *totals.get_mut(gender) += count as u64;
             match *peak.get(gender) {
                 Some((_, old_peak)) => {
@@ -109,7 +106,7 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
                 }
             }
             let ratio = (count as f64) / (total_births as f64);
-            YearResponse { data, total_births, ratio }
+            YearResponse { data: Some(data.clone()), total_births, ratio }
         }));
     }
     let grand_total = totals.male + totals.female;
@@ -123,14 +120,15 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
         Some(Gender::Female)
     };
     response.peak = peak.map(|_, opt| opt.map(|(year, _)| year));
-    response.known_names = database.determine_known_names(&request.years)
-        .cloned().collect();
+    response.known_names = database.determine_known_names(&request.years)?;
     Ok(Json(response))
 }
 #[derive(Debug)]
 enum RequestError {
     ParseYear(ParseError),
     MissingDatabase,
+    InvalidDatabase(sqlite::Error),
+    RequestedZeroYears
 }
 impl From<ParseError> for RequestError {
     #[inline]

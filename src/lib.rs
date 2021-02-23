@@ -1,75 +1,107 @@
-use std::{iter, slice};
-use std::io::{self, BufReader, BufRead};
+use std::iter;
 use std::fmt::{self, Display, Formatter};
-use std::fs::File;
-use std::hash::Hash;
-use std::str::FromStr;
-use std::path::{PathBuf};
-use std::borrow::Borrow;
-use std::collections::{HashSet, HashMap};
-use std::collections::hash_map::Entry;
+use std::path::Path;
 
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate itoa;
+extern crate sqlite;
+extern crate idmap;
 
-const KNOWN_NAMES_CACHE_LIMIT: usize = 5;
+use idmap::DirectIdMap;
+
 
 pub struct NameDatabase {
-    location: PathBuf,
-    years: HashMap<u32, GenderedData<YearData>>,
-    known_names: HashSet<String>,
-    known_names_cache: Vec<(Vec<u32>, Vec<String>)>
+    connection: sqlite::Connection
 }
 impl NameDatabase {
-    #[inline]
-    pub fn new(location: PathBuf) -> Result<NameDatabase, io::Error> {
-        if location.exists() {
-            Ok(NameDatabase { location, years: HashMap::new(), known_names: HashSet::new(), known_names_cache: Vec::with_capacity(KNOWN_NAMES_CACHE_LIMIT) })
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("Missing name database: {}", location.display())
-            ))
-        }
+    pub fn open(location: &Path) -> Result<NameDatabase, sqlite::Error> {
+        let connection = sqlite::Connection::open_with_flags(location, sqlite::OpenFlags::new().set_read_only())?;
+        Ok(NameDatabase { connection })
     }
-    pub fn load_year(&mut self, year: u32) -> Result<&GenderedData<YearData>, ParseError> {
-        Ok(match self.years.entry(year) {
-            Entry::Occupied(entry) => {
-                &*entry.into_mut()
-            },
-            Entry::Vacant(entry) => {
-                let file = File::open(self.location.join(format!("yob{}.txt", year)))
-                    .map_err(|cause| ParseError { kind: cause.into(), year })?;
-                let year = parse_year(BufReader::new(file))
-                    .map_err(|kind| ParseError { kind, year })?;
-                self.known_names.extend(year.male.name_list.iter()
-                    .map(|data| &data.name).cloned());
-                self.known_names.extend(year.female.name_list.iter()
-                    .map(|data| &data.name).cloned());
-                &*entry.insert(year)
+    pub fn load_year_meta(&self, year: u32) -> Result<GenderedData<YearMeta>, ParseError> {
+        let mut stmt = self.connection.prepare("SELECT total_males, total_females FROM years WHERE year == ?")?;
+        stmt.bind(1, i64::from(year))?; // year == {year}
+        match stmt.next()? {
+            sqlite::State::Done => return Err(ParseError::MissingResult { year, query_name: "load_year_meta" }),
+            sqlite::State::Row => {
+                let total_males = stmt.read::<i64>(0)?;
+                let total_females = stmt.read::<i64>(1)?;
+                match stmt.next()? {
+                    sqlite::State::Done => {
+                        // Okay -> we had one and only one result
+                        Ok(GenderedData {
+                            male: YearMeta { total_births: total_males as u32 },
+                            female: YearMeta { total_births: total_females as u32 }
+                        })
+                    },
+                    sqlite::State::Row => {
+                        return Err(ParseError::ExpectedSingleRow {
+                            query_name: "load_year_meta",
+                            year
+                        })
+                    }
+                }
             }
-        })
-    }
-    fn find_existing_known_names(&self, years: &[u32]) -> Option<slice::Iter<String>> {
-        self.known_names_cache.iter().find(|&(ref existing_years, _)| **existing_years == *years).map(|&(_, ref data)| data.iter())
-    }
-    pub fn determine_known_names(&mut self, years: &[u32]) -> slice::Iter<String> {
-        if self.find_existing_known_names(years).is_some() {
-            return self.find_existing_known_names(years).unwrap();
         }
-        let data = self.known_names.iter().cloned()
-            .filter(|name| years.iter().any(|&year| {
-                let year = &self.years[&year];
-                year.male.get(&**name).is_some() || year.female.get(&**name).is_some()
-            }))
-            .collect::<Vec<String>>();
-        // Remove LRU
-        while self.known_names_cache.len() >= KNOWN_NAMES_CACHE_LIMIT {
-            self.known_names_cache.remove(0);
+    }
+    pub fn list_name_data(&self, name: &str, start_year: u32) -> Result<DirectIdMap<u32, GenderedData<NameData>>, ParseError> {
+        let mut stmt = self.connection.prepare(r#"SELECT name_counts.year, name_counts.male_count,
+            name_counts.female_count, male_rank, female_rank FROM name_counts
+            INNER JOIN names ON name_counts.name_id == names.id WHERE names.name == ? AND name_counts.year >= ?"#)?;
+        stmt.bind(1, name)?;
+        stmt.bind(2, i64::from(start_year))?;
+        let mut result = DirectIdMap::with_capacity_direct(2020usize.saturating_sub(start_year as usize));
+        while let sqlite::State::Row = stmt.next()? {
+            let actual_year = stmt.read::<i64>(0)? as u32;
+            let male_count = stmt.read::<i64>(1)?;
+            let female_count = stmt.read::<i64>(2)?;
+            let male_rank = stmt.read::<Option<i64>>(3)?;
+            let female_rank = stmt.read::<Option<i64>>(4)?;
+            result.insert(actual_year.checked_sub(start_year).unwrap(), GenderedData {
+                male: NameData {
+                    rank: male_rank.map(|i| i as u32),
+                    count: male_count as u32,
+                    gender: Gender::Male
+                },
+                female: NameData {
+                    rank: female_rank.map(|i| i as u32),
+                    count: female_count as u32,
+                    gender: Gender::Female
+                }
+            });
         }
-        self.known_names_cache.push((years.to_owned(), data));
-        self.known_names_cache.last().unwrap().1.iter()
+        Ok(result)
+    }
+    pub fn determine_known_names(&self, years: &[u32]) -> Result<Vec<String>, ParseError> { 
+        /*
+         * TODO: Remove this horribleness
+         *
+         * Probably should just stop allowing filtering by 'years'.
+         *
+         * We don't use the prepared statement API here,
+         * because we are dynamically building the query at runtime.
+         */
+        let mut query = String::from("SELECT DISTINCT names.name FROM name_counts INNER JOIN names ");
+        query.push_str("on name_counts.name_id == names.id WHERE (name_counts.male_count > 0 OR name_counts.female_count > 0)");
+        query.push_str("AND name_counts.year in (");
+        query.reserve(years.len() * 6);
+        // NOTE: This should not be vulnerable to SQL injection since we only use unsigned integers
+        for (index, &year) in years.iter().enumerate() {
+            if index != 0 {
+                query.push_str(", ");
+            }
+            let mut int_buffer = ::itoa::Buffer::new();
+            query.push_str(int_buffer.format(year));
+        }
+        query.push_str(");");
+        let mut stmt = self.connection.prepare(&*query)?;
+        let mut results = Vec::new();
+        while let sqlite::State::Row = stmt.next()? {
+            results.push(stmt.read::<String>(0)?);
+        }
+        Ok(results)
     }
 }
 
@@ -90,16 +122,6 @@ pub fn normalize_name(target: &str) -> String {
 pub enum Gender {
     Male,
     Female
-}
-impl Gender {
-    #[inline]
-    fn parse(c: char) -> Option<Gender> {
-        match c {
-            'M' => Some(Gender::Male),
-            'F' => Some(Gender::Female),
-            _ => None
-        }
-    }
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GenderedData<T> {
@@ -149,127 +171,57 @@ impl<T> GenderedData<T> {
         }
     }
 }
+impl Default for GenderedData<NameData> {
+    fn default() -> Self {
+        GenderedData {
+            male: NameData {
+                gender: Gender::Male,
+                rank: None,
+                count: 0
+            },
+            female: NameData {
+                gender: Gender::Female,
+                rank: None,
+                count: 0
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NameData {
-    pub name: String,
     pub gender: Gender,
-    pub rank: u32,
+    pub rank: Option<u32>,
     pub count: u32
 }
-pub struct YearData {
-    #[allow(dead_code)]
-    name_list: Vec<NameData>,
-    name_table: HashMap<String, NameData>,
-    total_births: u32
-}
-impl YearData {
-    pub fn new(name_list: Vec<NameData>) -> YearData {
-        if cfg!(debug_assertions) {
-            for (rank, name) in name_list.iter().enumerate() {
-                assert_eq!(name.rank as usize, rank);
-            }
-        }
-        let mut total_births = 0;
-        let mut gender = None;
-        let mut name_table = HashMap::with_capacity(name_list.len());
-        for value in &name_list {
-            let expected_gender = *gender.get_or_insert(value.gender);
-            debug_assert_eq!(expected_gender, value.gender);
-            total_births += value.count;
-            match name_table.entry(value.name.clone()) {
-                Entry::Occupied(entry) => {
-                    panic!(
-                        "Conflicting entries for {:?}: {:?} and {:?}",
-                        value.name, value, entry.get()
-                    );
-                },
-                Entry::Vacant(entry) => {
-                    entry.insert(value.clone());
-                }
-            }
-        }
-        YearData { name_table, name_list, total_births }
-    }
-    #[inline]
-    pub fn total_births(&self) -> u32 {
-        self.total_births
-    }
-    #[inline]
-    pub fn get<T: Eq + Hash>(&self, name: T) -> Option<&NameData> where T: Borrow<str> {
-        self.name_table.get(name.borrow())
-    }
-}
-#[inline]
-fn unpack3<T, I: IntoIterator<Item=T>>(iter: I) -> Option<[T; 3]> {
-    let mut iter = iter.into_iter();
-    let array = [iter.next()?, iter.next()?, iter.next()?];
-    if iter.next().is_none() {
-        Some(array)
-    } else {
-        None
-    }
-}
-#[inline]
-fn unpack_single<T, I: IntoIterator<Item=T>>(iter: I) -> Option<T> {
-    let mut iter = iter.into_iter();
-    let value = iter.next()?;
-    if iter.next().is_none() {
-        Some(value)
-    } else {
-        None
-    }
-}
-fn parse_line(text: &str) -> Result<NameData, ParseErrorKind> {
-    let  invalid_line = || ParseErrorKind::InvalidLine(text.into());
-    let [name, gender, count] = unpack3::<&str, _>(text.split(','))
-        .ok_or_else(invalid_line)?;
-    Ok(NameData {
-        name: name.into(),
-        gender: unpack_single(gender.chars()).and_then(Gender::parse)
-            .ok_or_else(invalid_line)?,
-        rank: u32::max_value(),
-        count: u32::from_str(count).map_err(|_| invalid_line())?
-    })
-}
-pub fn parse_year<R: BufRead>(mut reader: R) -> Result<GenderedData<YearData>, ParseErrorKind> {
-    let mut buffer = String::new();
-    let mut name_lists = GenderedData::<Vec<_>>::default();
-    loop {
-        buffer.clear();
-        reader.read_line(&mut buffer)?;
-        if buffer.is_empty() {
-            break
-        }
-        let mut data = parse_line(&buffer.trim())?;
-        data.rank = name_lists.get(data.gender).len() as u32;
-        name_lists.get_mut(data.gender).push(data);
-    }
-    Ok(name_lists.map(|_, data|YearData::new(data)))
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct YearMeta {
+    pub total_births: u32
 }
 #[derive(Debug)]
-pub struct ParseError {
-    pub year: u32,
-    pub kind: ParseErrorKind
+pub enum ParseError {
+    SqlError(sqlite::Error),
+    ExpectedSingleRow {
+        year: u32,
+        query_name: &'static str
+    },
+    MissingResult {
+        year: u32,
+        query_name: &'static str
+    }
 }
 impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Unable to parse year {}", self.year)?;
-        match self.kind {
-            ParseErrorKind::InvalidLine(ref line) => write!(f, "invalid line {:?}", line),
-            ParseErrorKind::IoError(ref cause) => write!(f, "{}", cause),
+        match *self {
+            ParseError::SqlError(ref cause) => write!(f, "SQL Error: {}", cause),
+            ParseError::ExpectedSingleRow { year, query_name } => write!(f, "Expected single row for {} in {:?}", year, query_name),
+            ParseError::MissingResult { year, query_name } => write!(f, "Missing result for {} in {:?}", year, query_name)
         }
     }
 }
-
-#[derive(Debug)]
-pub enum ParseErrorKind {
-    InvalidLine(String),
-    IoError(io::Error)
-}
-impl From<io::Error> for ParseErrorKind {
+impl From<sqlite::Error> for ParseError {
     #[inline]
-    fn from(cause: io::Error) -> Self {
-        ParseErrorKind::IoError(cause)
+    fn from(cause: sqlite::Error) -> Self {
+        ParseError::SqlError(cause)
     }
 }

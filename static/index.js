@@ -1,8 +1,7 @@
 $(function() {
     "use strict";
     class NameData {
-        constructor(name, gender, rank, count) {
-            this.name = name;
+        constructor(gender, rank, count) {
             this.gender = gender;
             this.rank = rank;
             this.count = count;
@@ -10,7 +9,6 @@ $(function() {
         static parse(data) {
             if (data == null) { return null };
             return new NameData(
-                data['name'],
                 data['gender'],
                 data['rank'],
                 data['count']
@@ -292,9 +290,10 @@ $(function() {
                 <td>0</td>
             </tr>`)
         } else {
+            let rank_str = data.rank != null ? `#${data.rank}` : "None";
             table.append(`<tr>
                 <th scope="row">${year}</th>
-                <td>#${data.rank + 1}</th>
+                <td>${rank_str}</th>
                 <td>${data.count}</td>
             </tr>`)
         }
