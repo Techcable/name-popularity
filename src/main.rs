@@ -130,7 +130,7 @@ fn name(request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> 
 enum RequestError {
     ParseYear(ParseError),
     MissingDatabase,
-    InvalidDatabase(sqlite::Error),
+    InvalidDatabase(rusqlite::Error),
     RequestedZeroYears
 }
 impl From<ParseError> for RequestError {

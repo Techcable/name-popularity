@@ -10,9 +10,7 @@ serde_derive = "1"
 # Rocket
 rocket = "0.4.5"
 # SQlite database
-sqlite = "0.25"
-# Fast integer writes
-itoa = "0.4"
+rusqlite = "0.24"
 # Fast integer maps
 idmap = "0.2"
 
