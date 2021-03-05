@@ -1,0 +1,11 @@
+[Unit]
+Description=Name popularity service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/name-popularity
+ExecStart=%h/name-popularity/name-popularity
+Environment="ROCKET_ENV=stage"
+
+[Install]
+WantedBy=default.target
