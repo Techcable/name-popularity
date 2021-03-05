@@ -13,7 +13,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
-use rocket::response::{NamedFile};
+use rocket::response::{NamedFile, Debug};
 use rocket_contrib::json::Json;
 
 use name_popularity::{Gender, normalize_name, NameDatabase, GenderedData, NameData, ParseError};
@@ -56,8 +56,8 @@ struct NameResponse {
 }
 
 #[get("/")]
-fn index() -> io::Result<NamedFile> {
-    NamedFile::open("static/index.html")
+fn index() -> Result<NamedFile, Debug<io::Error>> {
+    NamedFile::open("static/index.html").map_err(Debug)
 }
 
 #[get("/<file..>")]
@@ -66,13 +66,13 @@ fn files(file: PathBuf) -> Option<NamedFile> {
 }
 
 #[get("/api/known_names", format = "application/json")]
-fn known_names(conn: NamesDBConnection) -> Result<Json<Vec<String>>, RequestError> {
+fn known_names(conn: NamesDBConnection) -> Result<Json<Vec<String>>, Debug<RequestError>> {
     let database = conn.as_lib();
-    Ok(Json(database.list_known_names()?))
+    Ok(Json(database.list_known_names().map_err(RequestError::from)?))
 }
 
 #[post("/api/load", format = "application/json", data = "<request>")]
-fn name(database: NamesDBConnection, request: Json<NameRequest>) -> Result<Json<NameResponse>, RequestError> {
+fn name(database: NamesDBConnection, request: Json<NameRequest>) -> Result<Json<NameResponse>, Debug<RequestError>> {
     let request: NameRequest = request.into_inner().normalized();
     let database = database.as_lib();
     let mut response = NameResponse {
@@ -84,9 +84,9 @@ fn name(database: NamesDBConnection, request: Json<NameRequest>) -> Result<Json<
     let mut peak = GenderedData::<Option<(u32, u32)>> { male: None, female: None };
     let mut totals = GenderedData::<u64>::default();
     let start_year = request.years.iter().cloned().min().ok_or(RequestError::RequestedZeroYears)?;
-    let data_map = database.list_name_data(&*request.name, start_year)?;
+    let data_map = database.list_name_data(&*request.name, start_year).map_err(RequestError::from)?;
     for &year in &request.years {
-        let meta = database.load_year_meta(year)?;
+        let meta = database.load_year_meta(year).map_err(RequestError::from)?;
         let data = data_map.get(year - start_year).cloned().unwrap_or_default();
         response.years.insert(year, data.as_ref().map(|gender, data| {
             let total_births = meta.male.total_births + meta.female.total_births;
