@@ -116,7 +116,7 @@ $(function() {
      * TODO: This is shitty code, I need to refactor it to be more object oriented.
      * In my defense I can't think straight in this pathetic excuse for a language
      */
-    const CURRENT_YEAR = 2018;
+    const CURRENT_YEAR = 2020;
     const DEFAULT_START_YEAR = 1940;
     const MINIMUM_YEAR = 1880;
     // One of Benjamin's original obsessive names (besides the last name Shemermino)
