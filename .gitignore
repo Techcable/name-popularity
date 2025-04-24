@@ -7,6 +7,5 @@
 *.iml
 
 # Production Data & config
-names/
-names.sqlite
+/data
 Rocket.toml
