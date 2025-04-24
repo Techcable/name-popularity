@@ -1,5 +1,32 @@
-check: && check-format
-    ruff check
+# runs tests and checks
+test: _check && check-format
+    uv run pytest
+
+check: _check check-format
+
+# Automatically fix detected issues
+fix: && format
+    -ruff check --fix --fix-only
+
+# Runs development server
+dev: _check
+    uv run fastapi dev src/name_popularity/app.py
+
+# Runs in production mode
+run: _check
+    uv run fastapi run src/name_popularity/app.py
+
+# runs all checks except formatting
+_check: && mypy
+    -ruff check
+
+build: _check
+    # Build project (usually a wheel)
+    uv build
+
+# checks types
+mypy:
+    uv run mypy --pretty -p name_popularity
 
 # Checks for formatting issues
 check-format:
@@ -10,3 +37,4 @@ check-format:
 format:
     ruff format .
     ruff check --select 'I' --fix .
+

@@ -1,0 +1,2 @@
+# no diff for lockfile
+/uv.lock -diff

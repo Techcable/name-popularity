@@ -9,3 +9,18 @@
 # Production Data & config
 /data
 Rocket.toml
+
+##
+## Python
+##
+__pycache__
+
+# setuptools
+/dist
+/src/*.egg-info
+
+# setuptools_scm
+/src/*/_version.py
+
+# mypy
+.mypy_cache
