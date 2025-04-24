@@ -1,4 +1,5 @@
 check: && check-format
+    ruff check
 
 # Checks for formatting issues
 check-format:
