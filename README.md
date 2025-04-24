@@ -15,3 +15,7 @@ Each year's data is stored in a CSV file inside the zipfile with columns 'name,g
 I use `scripts/convert_database.py` to convert the zipfile into a SQLite database ahead of time. The application never writes to the database.
 
 *NOTE*: The zipfile is also available through the Internet Archive.
+
+## License
+This project is licensed under the [Blue Oak Model License](https://blueoakcouncil.org/license/1.0.0).
+By contributing to this project, you agree to license your contribution under the same terms.
