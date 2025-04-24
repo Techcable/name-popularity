@@ -3,14 +3,15 @@ name-popularity
 An app to test whether your name is 'usual' or 'unusual'
 based on social security birth data.
 
-This is for my little brother since he has a crazy obession with names.
+This is for my little brother since he has a crazy obsession with names.
 He keeps asking these crazy questions about 
 the names and I had to write this app so we can accurately answer him.
 
 ## Source
-Social security birth data: https://www.ssa.gov/oact/babynames/limits.html
- 
-The data starts in 1880. I have to load each new year into the sqlite databse by using the convert script.
-My current server has years 1880-2019 in the database.
+This is based on the [Social Security Administration's Birth Statistics](https://www.ssa.gov/oact/babynames/limits.html). The data is in a zipfile under the "National Data" link, or available at <https://www.ssa.gov/oact/babynames/names.zip> (~7MiB).
 
-I just updated it to include 2018 & 2019 today. Before then, my data stopped at 2017.
+Each year's data is stored in a CSV file inside the zipfile with columns 'name,gender,count'.
+ 
+I use `scripts/convert_database.py` to convert the zipfile into a SQLite database ahead of time. The application never writes to the database.
+
+*NOTE*: The zipfile is also available through the Internet Archive.
