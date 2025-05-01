@@ -14,13 +14,11 @@ classifiers = [
 # 3.12 adds type parameter syntax
 requires-python = ">=3.12"
 dependencies = [
-    "loguru~=0.7",
     # FastAPI (TODO: When will this be stable?)
-    "fastapi[standard]>=0.115",
+    "fastapi>=0.115",
     # other
     "cachebox~=5.0",
     "techcable.orderedset~=0.1",
-    "orjson~=3.10",
     "pydantic-settings~=2.9",
     "SQLAlchemy~=2.0",
 ]
@@ -29,7 +27,13 @@ dependencies = [
 mypy = ["mypy~=1.0", {include-group = "typing"}]
 test = ["pytest~=8.3", "pytest-sugar~=1.0"]
 typing = []
-dev = [{include-group = "mypy"}, {include-group = "test"}]
+dev = [
+    {include-group = "mypy"},
+    {include-group = "test"},
+    # TODO: While this includes the CLI and uvicorn that we want for development,
+    # it also includes jinja2 & email-validator which could become undeclared runtime dependencies
+    "fastapi[standard]"
+]
 
 [project.urls]
 homepage = "https://names.techcable.net"
