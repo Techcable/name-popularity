@@ -24,6 +24,11 @@ _check: && mypy
 
 build: _check
 
+# Setup production environment
+setup-prod:
+    uv sync --no-dev
+    pnpm exec tsc
+
 # checks types
 mypy:
     uv run mypy --pretty -p name_popularity
