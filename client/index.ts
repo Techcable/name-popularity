@@ -1,5 +1,7 @@
-$(function() {
+(function() {
     "use strict";
+    // NOTE: We expect to be deferred, so the dom should be loaded
+    console.assert(document.readyState !== "loading", `Unexpected document state: ${document.readyState}`);
     type Gender = "male" | "female";
     interface GenderedData<T> {
         male: T;
@@ -89,26 +91,16 @@ $(function() {
                 years: this.years
             }
         }
-        run(callback: (response: NameResponse) => void) {
+        async run(): Promise<NameResponse> {
             console.log(`Running request ${JSON.stringify(this.json)}`);
-            $.ajax({
-                url: "api/load",
+            let response = await fetch("api/load", {
                 method: "POST",
-                contentType: "application/json",
-                data: JSON.stringify(this.json),
-                converters: {
-                    "text json": function(result) {
-                        let parsed = NameResponse.parse(JSON.parse(result));
-                        console.log(`Parsed years ${JSON.parse(result)["years"]} into ${parsed.years.size}`);
-                        return parsed;
-                    }
-                }
-            }).done(callback)
-            .fail(function (_jqXHR, _textStatus, errorThrown) {
-                console.log("Failed: " + errorThrown);
-            }).always(function (_a, textStatus, _b) {
-                console.log("Final status: " + textStatus);
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(this.json),
             });
+            return NameResponse.parse(await response.json());
         }
     }
     interface KnownYearsResponse {
@@ -117,42 +109,16 @@ $(function() {
     }
     class ListKnownYearsRequest {
         constructor() {}
-        run(callback: (response: KnownYearsResponse) => void) {
-            console.log(`Running request GET api/known_years`);
-            $.ajax({
-                url: "api/known_years",
-                method: "GET",
-                converters: {
-                    "text json": function(result) {
-                        return JSON.parse(result);
-                    }
-                }
-            }).done(callback)
-            .fail(function (_jqXHR, _textStatus, errorThrown) {
-                console.log("Failed: " + errorThrown);
-            }).always(function (_a, textStatus, _b) {
-                console.log("Final status: " + textStatus);
-            });
+        async run(): Promise<KnownYearsResponse> {
+            let response = await fetch("api/known_years");
+            return await response.json();
         }
     }
     class ListKnownNamesRequest {
         constructor() {}
-        run(callback: (names: string[]) => void) {
-            console.log(`Running request GET api/known_names`);
-            $.ajax({
-                url: "api/known_names",
-                method: "GET",
-                converters: {
-                    "text json": function(result) {
-                        return JSON.parse(result);
-                    }
-                }
-            }).done(callback)
-            .fail(function (_jqXHR, _textStatus, errorThrown) {
-                console.log("Failed: " + errorThrown);
-            }).always(function (_a, textStatus, _b) {
-                console.log("Final status: " + textStatus);
-            });
+        async run(): Promise<string[]> {
+            let response = await fetch("api/known_names");
+            return await response.json();
         }
     }
 
@@ -184,21 +150,24 @@ $(function() {
             return this.INSTANCE;
         }
     }
-    new ListKnownYearsRequest().run(function (response) {
+    new ListKnownYearsRequest().run().then((response) => {
         console.assert(Metadata.INSTANCE === null, "Already initialized metadata");
         const meta = new Metadata(response);
         Metadata.INSTANCE = meta;
         console.assert(meta.minimumYear === 1880, `Unexpected minimum year ${meta.minimumYear}`);
-        $("#yearRangeMessage").text(`Includes data from ${meta.minimumYear} to ${meta.currentYear}`);
-        $("#startYear").attr("min", meta.minimumYear);
-        $("#startYear").attr("max", meta.currentYear);
-        $("#startYear").attr("placeholder", meta.defaultStartYear);
+        document.getElementById("yearRangeMessage")!!.innerText = `Includes data from ${meta.minimumYear} to ${meta.currentYear}`;
+        {
+            let startYear = document.getElementById("startYear")!!;
+            startYear.setAttribute("min", String(meta.minimumYear));
+            startYear.setAttribute("max", String(meta.currentYear));
+            startYear.setAttribute("placeholder", String(meta.defaultStartYear));
+        }
         console.log("Finished initalizing metadata");
     })
     // One of Benjamin's original obsessive names (besides the last name Shemermino)
     const DEFAULT_NAME = "Salvatore";
     function currentName(): string {
-        let name = $("#targetName").val() as string;
+        let name = document.getElementById("targetName")!!.textContent!!;
         console.log(`Raw targetName ${name}`)
         if (name == "") {
             name = DEFAULT_NAME;
@@ -319,7 +288,8 @@ $(function() {
         }
     }
     function currentStartYear(): number | null {
-        let rawYear = $("#startYear").val() as string;
+        let startYearElement = document.getElementById("startYear")!!;
+        let rawYear = startYearElement!!.textContent!!;
         const meta = Metadata.assumeLoaded();
         console.log(`Raw startYear ${rawYear}`);
         if (rawYear == "") {
@@ -330,11 +300,11 @@ $(function() {
         if (!Number.isNaN(year) && year >= meta.minimumYear && year <= meta.currentYear) {
             return year
         }
-        $("#startYear").val('');
+        startYearElement.textContent = '';
         alert(`Invalid year '${rawYear}'`);
         return null;
     }
-    function appendAverageRow(table: JQuery, data_list: NameData[]) {
+    function appendAverageRow(table: Element, data_list: NameData[]) {
         let total_births = 0;
         let total_ranks = 0;
         let valid_entries = 0;
@@ -345,46 +315,61 @@ $(function() {
                 valid_entries += 1;
             }
         }
+        let createdTable = document.createElement("tr");
+        createdTable.className = "table-primary";
+        {
+            let headerRow = document.createElement("th");
+            headerRow.scope = "row";
+            headerRow.innerText = "Average";
+            createdTable.append(headerRow);
+        }
+        function appendRow(text: string): void {
+            let row = document.createElement("td");
+            row.innerText = text;
+            createdTable.append(row);
+        }
         if (valid_entries > 0) {
             let average_births = Math.ceil(total_births / valid_entries);
             let average_rank = Math.round(total_ranks / valid_entries);
-            table.append(`<tr class="table-primary">
-                <th scope="row">Average</th>
-                <td>#${average_rank}</td>
-                <td>${average_births}</td>
-            </tr>`)
+            appendRow(`#${average_rank}`);
+            appendRow(String(average_births));
         } else {
-            table.append(`<tr class="table-primary">
-                <th scope="row">Average</th>
-                <td>None</td>
-                <td>0</td>
-            </tr>`)
+            appendRow("None");
+            appendRow("0");
         }
+        table.append(createdTable);
     }
-    function appendNameRow(table: JQuery, year: number, data: NameData): void {
+    function appendNameRow(table: Element, year: number, data: NameData): void {
+        let createdTable = document.createElement("tr");
+        {
+            let headerRow = document.createElement("th");
+            headerRow.scope = "row";
+            headerRow.innerText = String(year);
+            createdTable.append(headerRow);
+        }
+        function appendRow(text: string): void {
+            let row = document.createElement("td");
+            row.innerText = text;
+            createdTable.append(row);
+        }
         if (data == null) {
-            table.append(`<tr>
-                <th scope="row">${year}</th>
-                <td>None</th>
-                <td>0</td>
-            </tr>`)
+            appendRow("None");
+            appendRow("0");
         } else {
             let rank_str = data.rank != null ? `#${data.rank}` : "None";
-            table.append(`<tr>
-                <th scope="row">${year}</th>
-                <td>${rank_str}</th>
-                <td>${data.count}</td>
-            </tr>`)
+            appendRow(rank_str);
+            appendRow(String(data.count));
         }
+        table.append(createdTable);
     }
-    $("#targetNameForm").on('submit', function(event) {
+    document.getElementById("targetNameForm")?.addEventListener('submit', (event) => {
         console.log(`Submitted ${currentName()}`);
-        $("#loadButton").trigger('click');
+        document.getElementById("loadButton")?.click();
         event.preventDefault();
     })
     let nameChart: Chart | null = null;
     let similarityWorker: Worker | null = null;
-    $("#loadButton").on('click', function() {
+    document.getElementById("loadButton")?.addEventListener("click", (_event)  => {
         console.log("Clicked");
         const meta = Metadata.requireLoaded("load name data");
         if (meta == null) return; // gave the message
@@ -392,20 +377,25 @@ $(function() {
         const startYear = currentStartYear();
         if (startYear == null) return;
         const years = [...Array(meta.currentYear - startYear + 1).keys()].map(i => i + startYear);
-        $("#maleNameHeader").text(`Males named '${name}'`);
-        $("#femaleNameHeader").text(`Females named '${name}'`);
-        $("#similarNameHeader").text(`Names similar to '${name}'`);
-        $("#maleNameSpinner").addClass("fa fa-spinner fa-spin");
-        $("#femaleNameSpinner").addClass("fa fa-spinner fa-spin");
-        $("#similarNameSpinner").addClass("fa fa-spinner fa-spin");
-        $("#verdictSpinner").addClass("fa fa-spinner fa-spin")
-        let similarNameList = $("#similarNames");
-        let maleNameTable = $("#maleNameTableBody");
-        let femaleNameTable = $("#femaleNameTableBody");
-        similarNameList.empty();
-        maleNameTable.empty();
-        femaleNameTable.empty();
-        $("#verdictList").empty();
+        document.getElementById("maleNameHeader")!!.innerText = `Males named '${name}'`;
+        document.getElementById("femaleNameHeader")!!.innerText = `Females named '${name}'`;
+        document.getElementById("similarNameHeader")!!.innerText = `Names similar to '${name}'`;
+        {
+            function activateSpinner(tgt: Element): void {
+                tgt.classList.add("fa", "fa-spinner", "fa-spin");
+            }
+            activateSpinner(document.getElementById("maleNameSpinner")!!);
+            activateSpinner(document.getElementById("femaleNameSpinner")!!);
+            activateSpinner(document.getElementById("similarNameSpinner")!!);
+            activateSpinner(document.getElementById("verdictSpinner")!!);
+        }
+        let similarNameList = document.getElementById("similarNames")!!;
+        let maleNameTable = document.getElementById("maleNameTableBody")!!;
+        let femaleNameTable = document.getElementById("femaleNameTableBody")!!;
+        similarNameList.replaceChildren();
+        maleNameTable.replaceChildren();
+        femaleNameTable.replaceChildren();
+        document.getElementById("verdictList")!!.replaceChildren();
         if (nameChart !== null) {
             console.log(`Destroying old chart`);
             nameChart.destroy();
@@ -417,15 +407,18 @@ $(function() {
              * hovers where the old graph used to be.
              * This is clearly a bug in ChartJS since 'destory' should be enough to eliminate the old graph
              */
-            $("#nameChartDiv").empty();
-            $("#nameChartDiv").append(`<canvas id="nameChart" width="100" height="100">`)
+            let newCanvas = document.createElement("canvas");
+            newCanvas.id = "nameChart";
+            newCanvas.width = 100;
+            newCanvas.height = 100;
+            document.getElementById("nameChartDiv")?.replaceChildren(newCanvas);
         }
         if (similarityWorker !== null) {
             similarityWorker.terminate();
             similarityWorker = null;
         }
         // Request known names and run similarity worker
-        new ListKnownNamesRequest().run(function(knownNames) {
+        new ListKnownNamesRequest().run().then((knownNames) => {
             if (similarityWorker !== null) throw new Error(`Expected null but got ${similarityWorker}`);
             similarityWorker = new Worker('js/worker.js');
             interface WorkerResponse {
@@ -435,19 +428,21 @@ $(function() {
             similarityWorker.onmessage = function(e: MessageEvent<WorkerResponse>) {
                 const similarNames = e.data.similarNames;
                 console.log(`Determined similar names of ${similarNames.map(name => name.name)}`);
-                $("#similarNameSpinner").removeClass();            
+                document.getElementById("similarNameSpinner")!!.className = "";
                 for (let similarName of similarNames) {
-                    similarNameList.append(`<li>${similarName.name}</li>`);
+                    let item = document.createElement("li");
+                    item.innerText = similarName.name;
+                    similarNameList.append(item);
                 }
             };
 
         })
         // Proceed to run the main request
         let request = new NameRequest(currentName(), years);
-        request.run(function(response) {
+        request.run().then((response) => {
             //console.log(`Received response years ${debugMap(response.years)}`)
-            $("#maleNameSpinner").removeClass();
-            $("#femaleNameSpinner").removeClass();
+            document.getElementById("maleNameSpinner")!!.className = "";
+            document.getElementById("femaleNameSpinner")!!.className = "";
             let maleBirthData = [];
             let femaleBirthData = [];
             for (let [_year, data] of response.years) {
@@ -464,7 +459,7 @@ $(function() {
             }
             console.log(`Male births data ${JSON.stringify(maleBirthData)}`);
             if (nameChart !== null) throw new Error(`Expected null but got ${nameChart}`);
-            nameChart = new Chart($("#nameChart") as any, {
+            nameChart = new Chart(document.getElementById("nameChart") as HTMLCanvasElement, {
                 type: 'line',
                 data: {
                     labels: years.map(String),
@@ -508,13 +503,18 @@ $(function() {
                 maleMap.set(year, data.male);
                 femaleMap.set(year, data.female);
             }
-            $("#verdictSpinner").removeClass();
+            document.getElementById("verdictSpinner")!!.className = "";
             console.log(`Typical gender ${response.typicalGender}`)
             if (response.typicalGender == null) {
-                $("#verdictList").append(`<li>${name} is so uncommon, social security does not list it. `
-                + `This name either <b>does not exist</b> or has less than 5 births a year and is hidden for privacy reasons.</li>`);
-                $("#verdictList").append(`<li>This only includes officially registered births in the United States, so all immigrants `
-                + `(even legal ones) are excluded from the statistics</li>`)
+                let verdictList = document.getElementById("verdictList")!!;
+                let firstItem = document.createElement("li");
+                firstItem.innerHTML = `${document.createTextNode(name)} is so uncommon, social security does not list it. `
+                    + `This name either <b>does not exist</b> or has less than 5 births a year and is hidden for privacy reasons.`;
+                let secondItem = document.createElement("li");
+                secondItem.innerText = `This only includes officially registered births in the United States, so all immigrants `
+                    + `(even legal ones) are excluded from the statistics`;
+                verdictList.append(firstItem);
+                verdictList.append(secondItem);
             } else {
                 const peak = response.peak[response.typicalGender];
                 console.log(`peak year for ${response.typicalGender} ${name} is ${peak}`);
@@ -550,11 +550,19 @@ $(function() {
                 console.log(`Determined era ${era} named ${ERA_NAMES[era]}`);
                 let peakPopularityName = `${POPULARITY_LEVEL_NAMES[peakPopularityLevel]} name (${formatPopularityLevel(peakRatio)})`;
                 let currentPopularityName = `${POPULARITY_LEVEL_NAMES[currentPopularityLevel]} name (${formatPopularityLevel(currentRatio)})`;
-                $("#verdictList").append(`<li>${name} is typically a ${genderName} name (${genderRatioMsg})</li>`);
-                $('#verdictList').append(`<li>At its peak in ${peak}, ${name} was a ${peakPopularityName}.</li>`);
-                $('#verdictList').append(`<li>Nowadays, ${name} is a ${currentPopularityName}.</li>`);
-                $('#verdictList').append(`<li>${name} is a ${ERA_NAMES[era]} name.</li>`)
+                {
+                    let verdictList = document.getElementById("verdictList")!!;
+                    function appendListItem(text: string): void {
+                        let item = document.createElement("li");
+                        item.innerText = text;
+                        verdictList.append(item);
+                    }
 
+                    appendListItem(`{name} is typically a ${genderName} name (${genderRatioMsg})`);
+                    appendListItem(`At its peak in ${peak}, ${name} was a ${peakPopularityName}.`);
+                    appendListItem(`Nowadays, ${name} is a ${currentPopularityName}.`);
+                    appendListItem(`${name} is a ${ERA_NAMES[era]} name.`)
+                }
             }
             appendAverageRow(maleNameTable, male_data);
             appendAverageRow(femaleNameTable, female_data)
@@ -565,4 +573,4 @@ $(function() {
 
         })
     })
-});
+})()
