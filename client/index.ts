@@ -1,13 +1,20 @@
 $(function() {
     "use strict";
+    type Gender = "male" | "female";
+    interface GenderedData<T> {
+        male: T;
+        female: T;
+    }
     class NameData {
-        constructor(gender, rank, count) {
+        gender: Gender;
+        rank: number;
+        count: number;
+        constructor(gender: Gender, rank: number, count: number) {
             this.gender = gender;
             this.rank = rank;
             this.count = count;
         }
-        static parse(data) {
-            if (data == null) { return null };
+        static parse(data: any): NameData {
             return new NameData(
                 data['gender'],
                 data['rank'],
@@ -16,12 +23,15 @@ $(function() {
         }
     }
     class YearResponse {
-        constructor(totalBirths, data, ratio) {
+        totalBirths : number;
+        data: NameData;
+        ratio: number;
+        constructor(totalBirths: number, data: NameData, ratio: number) {
             this.totalBirths = totalBirths;
             this.data = data;
             this.ratio = ratio;
         }
-        static parse(data) {
+        static parse(data: any) {
             return new YearResponse(
                 data['total_births'],
                 NameData.parse(data['data']),
@@ -30,11 +40,13 @@ $(function() {
         }
     }
     class YearData {
-        constructor(male, female) {
+        male: YearResponse;
+        female: YearResponse;
+        constructor(male: YearResponse, female: YearResponse) {
             this.male = male;
             this.female = female;
         }
-        static parse(data) {
+        static parse(data: any) {
             return new YearData(
                 YearResponse.parse(data['male']),
                 YearResponse.parse(data['female'])
@@ -42,27 +54,34 @@ $(function() {
         }
     }
     class NameResponse {
-        constructor(years, peak, typicalGender, genderRatio) {
+        years: Map<number, YearData>;
+        peak: GenderedData<number>;
+        typicalGender: Gender;
+        genderRatio: number;
+
+        constructor(years: Map<number, YearData>, peak: GenderedData<number>, typicalGender: Gender, genderRatio: number) {
             this.years = years;
             this.peak = peak;
             this.typicalGender = typicalGender;
             this.genderRatio = genderRatio;
         }
-        static parse(data) {
-            var years = new Map()
+
+        static parse(data: any) {
+            let years = new Map()
             Object.entries(data["years"]).forEach(function(entry) {
-                var year = Number.parseInt(entry[0]);
-                var data = YearData.parse(entry[1]);
+                let year = Number.parseInt(entry[0]);
+                let data = YearData.parse(entry[1]);
                 years.set(year, data);
             });
             return new NameResponse(years, data["peak"], data["typical_gender"], data["gender_ratio"])
         }
     }
     class NameRequest {
-        constructor(name, years) {
+        name: string;
+        years: number[];
+        constructor(name: string, years: number[]) {
             this.name = name;
             this.years = years;
-            console.log("Created request");
         }
         get json() {
             return {
@@ -70,7 +89,7 @@ $(function() {
                 years: this.years
             }
         }
-        run(callback) {
+        run(callback: (response: NameResponse) => void) {
             console.log(`Running request ${JSON.stringify(this.json)}`);
             $.ajax({
                 url: "api/load",
@@ -79,22 +98,26 @@ $(function() {
                 data: JSON.stringify(this.json),
                 converters: {
                     "text json": function(result) {
-                        var parsed = NameResponse.parse(JSON.parse(result));
+                        let parsed = NameResponse.parse(JSON.parse(result));
                         console.log(`Parsed years ${JSON.parse(result)["years"]} into ${parsed.years.size}`);
                         return parsed;
                     }
                 }
             }).done(callback)
-            .fail(function (jqXHR, textStatus, errorThrown) {
+            .fail(function (_jqXHR, _textStatus, errorThrown) {
                 console.log("Failed: " + errorThrown);
-            }).always(function (a, textStatus, b) {
+            }).always(function (_a, textStatus, _b) {
                 console.log("Final status: " + textStatus);
             });
         }
     }
+    interface KnownYearsResponse {
+        latest_year: number;
+        earliest_year: number;
+    }
     class ListKnownYearsRequest {
         constructor() {}
-        run(callback) {
+        run(callback: (response: KnownYearsResponse) => void) {
             console.log(`Running request GET api/known_years`);
             $.ajax({
                 url: "api/known_years",
@@ -105,16 +128,16 @@ $(function() {
                     }
                 }
             }).done(callback)
-            .fail(function (jqXHR, textStatus, errorThrown) {
+            .fail(function (_jqXHR, _textStatus, errorThrown) {
                 console.log("Failed: " + errorThrown);
-            }).always(function (a, textStatus, b) {
+            }).always(function (_a, textStatus, _b) {
                 console.log("Final status: " + textStatus);
             });
         }
     }
     class ListKnownNamesRequest {
         constructor() {}
-        run(callback) {
+        run(callback: (names: string[]) => void) {
             console.log(`Running request GET api/known_names`);
             $.ajax({
                 url: "api/known_names",
@@ -125,24 +148,28 @@ $(function() {
                     }
                 }
             }).done(callback)
-            .fail(function (jqXHR, textStatus, errorThrown) {
+            .fail(function (_jqXHR, _textStatus, errorThrown) {
                 console.log("Failed: " + errorThrown);
-            }).always(function (a, textStatus, b) {
+            }).always(function (_a, textStatus, _b) {
                 console.log("Final status: " + textStatus);
             });
         }
     }
 
     class Metadata {
-        constructor(yearResponse) {
+        readonly currentYear: number;
+        readonly minimumYear: number;
+        readonly defaultStartYear: number;
+        constructor(yearResponse: KnownYearsResponse) {
             this.currentYear = yearResponse.latest_year;
             this.minimumYear = yearResponse.earliest_year;
             if (!Number.isInteger(this.currentYear)) throw new Error(`Invalid 'latest_year': ${yearResponse.latest_year}`);
+            console.assert(Number.isInteger(this.minimumYear), "Invalid `earliest_year`");
             this.defaultStartYear = 1940;
             Object.freeze(this);
         }
-        static INSTANCE = null;
-        static requireLoaded(action) {
+        static INSTANCE: Metadata | null = null;
+        static requireLoaded(action: string): Metadata | null {
             if (this.INSTANCE === null) {
                 alert(`Can not ${action} while initial metadata is loading`);
                 return null;
@@ -150,18 +177,13 @@ $(function() {
                 return this.INSTANCE;
             }
         }
-        static assumeLoaded() {
+        static assumeLoaded(): Metadata {
             if (this.INSTANCE === null) {
                 throw new Error("Expected metadata to already be loaded!");
             }
             return this.INSTANCE;
         }
     }
-    /*
-     * TODO: This is shitty code, I need to refactor it to be more object oriented.
-     * In my defense I can't think straight in this pathetic excuse for a language
-     */
-
     new ListKnownYearsRequest().run(function (response) {
         console.assert(Metadata.INSTANCE === null, "Already initialized metadata");
         const meta = new Metadata(response);
@@ -175,15 +197,8 @@ $(function() {
     })
     // One of Benjamin's original obsessive names (besides the last name Shemermino)
     const DEFAULT_NAME = "Salvatore";
-    function debugMap(target) {
-        var result = new Object();
-        for (let [key, value] of target) {
-            result[key.toString()] = value;
-        }
-        return JSON.stringify(result);
-    }
-    function currentName() {
-        var name = $("#targetName").val();
+    function currentName(): string {
+        let name = $("#targetName").val() as string;
         console.log(`Raw targetName ${name}`)
         if (name == "") {
             name = DEFAULT_NAME;
@@ -203,8 +218,8 @@ $(function() {
         "Modern", // between 1960-2000
         "Very Modern", // after 2000
     ];
-    function averageCount(data) {
-        var sum = 0;
+    function averageCount(data: YearResponse[]): number{
+        let sum = 0;
         console.log(`Data ${data}`);
         for (let element of data) {
             if (element.data != null) {
@@ -213,19 +228,18 @@ $(function() {
         }
         return sum / data.length;
     }
-    function filterYears(years, func) {
-        return Array.from(years.entries())
-            .filter(([year, data]) => func(year))
-            .map(([year, data]) => data);
+    function filterValues<K, V>(map: Map<K, V>, func: (key: K) => boolean): V[] {
+        return Array.from(map.entries())
+            .filter(([key, _value]) => func(key))
+            .map(([_key, value]) => value);
     }
-    function determineEra(peak, years) {
+    function determineEra(peak: number, years: Map<number, YearResponse>): number {
         const SIGNIFICANCE_RATIO = .2;
         const SIGNIFICANCE_THRESHOLD = 500;
-        const peakValue = years[peak];
-        var era = null;
-        const traditionalYears = filterYears(years, (year) => year < 1960);
-        const modernYears = filterYears(years, (year) => year >= 1960 && year < 2000);
-        const veryModernYears = filterYears(years, (year) => year >= 2000);
+        const peakValue = years.get(peak)!!.totalBirths;
+        const traditionalYears = filterValues(years, (year) => year < 1960);
+        const modernYears = filterValues(years, (year) => year >= 1960 && year < 2000);
+        const veryModernYears = filterValues(years, (year) => year >= 2000);
         const traditionalAverage = averageCount(traditionalYears);
         const modernAverage = averageCount(modernYears);
         const veryModernAverage = averageCount(veryModernYears);
@@ -273,19 +287,7 @@ $(function() {
             }
         }
     }
-    function computePopularityRatio(years) {
-        var totalBirths = 0;
-        var totalNameBirths = 0;
-        for (let [year, data] of years) {
-            if (data != null) {
-                totalNameBirths += data.data.count
-                totalBirths += data.totalBirths;
-            }
-        }
-        if (totalBirths == 0) return 0;
-        return totalNameBirths / totalBirths;
-    }
-    function determinePopularityLevel(ratio) {
+    function determinePopularityLevel(ratio: number): number {
         if (ratio >= 0.1) {
             return 0
         } else if (ratio >= 1/500) {
@@ -300,7 +302,7 @@ $(function() {
             return 5;
         }
     }
-    function formatPopularityLevel(ratio) {
+    function formatPopularityLevel(ratio: number): string {
         let meta = Metadata.assumeLoaded();
         if (ratio >= 1/1000) {
             return `about ${Math.ceil(ratio*1000)} in a thousand`
@@ -316,14 +318,14 @@ $(function() {
             return `(internal error: invalid ratio ${ratio})`
         }
     }
-    function currentStartYear() {
-        var rawYear = $("#startYear").val();
+    function currentStartYear(): number | null {
+        let rawYear = $("#startYear").val() as string;
         const meta = Metadata.assumeLoaded();
         console.log(`Raw startYear ${rawYear}`);
         if (rawYear == "") {
             rawYear = meta.defaultStartYear.toString();
         }
-        var year = Number.parseInt(rawYear);
+        let year = Number.parseInt(rawYear);
         console.log(`Parsed year ${year} from ${rawYear}`)
         if (!Number.isNaN(year) && year >= meta.minimumYear && year <= meta.currentYear) {
             return year
@@ -332,11 +334,11 @@ $(function() {
         alert(`Invalid year '${rawYear}'`);
         return null;
     }
-    function appendAverageRow(table, data_list) {
-        var total_births = 0;
-        var total_ranks = 0;
-        var valid_entries = 0;
-        for (var data of data_list) {
+    function appendAverageRow(table: JQuery, data_list: NameData[]) {
+        let total_births = 0;
+        let total_ranks = 0;
+        let valid_entries = 0;
+        for (let data of data_list) {
             if (data != null) {
                 total_births += data.count;
                 total_ranks += data.rank;
@@ -344,8 +346,8 @@ $(function() {
             }
         }
         if (valid_entries > 0) {
-            var average_births = Math.ceil(total_births / valid_entries);
-            var average_rank = Math.round(total_ranks / valid_entries);
+            let average_births = Math.ceil(total_births / valid_entries);
+            let average_rank = Math.round(total_ranks / valid_entries);
             table.append(`<tr class="table-primary">
                 <th scope="row">Average</th>
                 <td>#${average_rank}</td>
@@ -359,7 +361,7 @@ $(function() {
             </tr>`)
         }
     }
-    function appendNameRow(table, year, data) {
+    function appendNameRow(table: JQuery, year: number, data: NameData): void {
         if (data == null) {
             table.append(`<tr>
                 <th scope="row">${year}</th>
@@ -380,8 +382,8 @@ $(function() {
         $("#loadButton").trigger('click');
         event.preventDefault();
     })
-    var nameChart = null;
-    var similarityWorker = null;
+    let nameChart: Chart | null = null;
+    let similarityWorker: Worker | null = null;
     $("#loadButton").on('click', function() {
         console.log("Clicked");
         const meta = Metadata.requireLoaded("load name data");
@@ -397,9 +399,9 @@ $(function() {
         $("#femaleNameSpinner").addClass("fa fa-spinner fa-spin");
         $("#similarNameSpinner").addClass("fa fa-spinner fa-spin");
         $("#verdictSpinner").addClass("fa fa-spinner fa-spin")
-        var similarNameList = $("#similarNames");
-        var maleNameTable = $("#maleNameTableBody");
-        var femaleNameTable = $("#femaleNameTableBody");
+        let similarNameList = $("#similarNames");
+        let maleNameTable = $("#maleNameTableBody");
+        let femaleNameTable = $("#femaleNameTableBody");
         similarNameList.empty();
         maleNameTable.empty();
         femaleNameTable.empty();
@@ -425,9 +427,12 @@ $(function() {
         // Request known names and run similarity worker
         new ListKnownNamesRequest().run(function(knownNames) {
             if (similarityWorker !== null) throw new Error(`Expected null but got ${similarityWorker}`);
-            similarityWorker = new Worker('worker.js');
+            similarityWorker = new Worker('js/worker.js');
+            interface WorkerResponse {
+                similarNames: { name: string }[];
+            }
             similarityWorker.postMessage({knownNames: knownNames, targetName: name})
-            similarityWorker.onmessage = function(e) {
+            similarityWorker.onmessage = function(e: MessageEvent<WorkerResponse>) {
                 const similarNames = e.data.similarNames;
                 console.log(`Determined similar names of ${similarNames.map(name => name.name)}`);
                 $("#similarNameSpinner").removeClass();            
@@ -443,9 +448,9 @@ $(function() {
             //console.log(`Received response years ${debugMap(response.years)}`)
             $("#maleNameSpinner").removeClass();
             $("#femaleNameSpinner").removeClass();
-            var maleBirthData = [];
-            var femaleBirthData = [];
-            for (let [year, data] of response.years) {
+            let maleBirthData = [];
+            let femaleBirthData = [];
+            for (let [_year, data] of response.years) {
                 if (data.male.data == null) {
                     maleBirthData.push(0);
                 } else {
@@ -458,11 +463,11 @@ $(function() {
                 }
             }
             console.log(`Male births data ${JSON.stringify(maleBirthData)}`);
-            if (nameChart !== null) throw new Error(`Expected null but got ${chart}`);
-            nameChart = new Chart($("#nameChart"), {
+            if (nameChart !== null) throw new Error(`Expected null but got ${nameChart}`);
+            nameChart = new Chart($("#nameChart") as any, {
                 type: 'line',
                 data: {
-                    labels: years.slice(),                    
+                    labels: years.map(String),
                     datasets: [
                         {
                             label: "Male Births",
@@ -493,10 +498,10 @@ $(function() {
                     }
                 }
             });
-            var male_data = new Array();
-            var female_data = new Array();
-            var maleMap = new Map();
-            var femaleMap = new Map();
+            let male_data: NameData[] = [];
+            let female_data: NameData[] = [];
+            let maleMap = new Map<number, YearResponse>();
+            let femaleMap = new Map<number, YearResponse>();
             for (let [year, data] of response.years) {
                 male_data.push(data.male.data);
                 female_data.push(data.female.data);
@@ -513,10 +518,10 @@ $(function() {
             } else {
                 const peak = response.peak[response.typicalGender];
                 console.log(`peak year for ${response.typicalGender} ${name} is ${peak}`);
-                var peakPopularityLevel, currentPopularityLevel, era, peakRatio, currentRatio, genderName, genderRatioMsg;
+                let peakPopularityLevel: number, currentPopularityLevel: number, era: number, peakRatio: number, currentRatio: number, genderName: string, genderRatioMsg: string;
                 switch (response.typicalGender) {
                     case 'male': {
-                        peakRatio = maleMap.get(peak).ratio;
+                        peakRatio = maleMap.get(peak)!!.ratio;
                         peakPopularityLevel = determinePopularityLevel(peakRatio);
                         currentRatio = maleMap.get(meta.currentYear)?.ratio ?? 0;
                         currentPopularityLevel = determinePopularityLevel(currentRatio);
@@ -526,7 +531,7 @@ $(function() {
                         break;
                     }
                     case 'female': {
-                        peakRatio = femaleMap.get(peak).ratio;
+                        peakRatio = femaleMap.get(peak)!!.ratio;
                         peakPopularityLevel = determinePopularityLevel(peakRatio);
                         currentRatio = femaleMap.get(meta.currentYear)?.ratio ?? 0;
                         currentPopularityLevel = determinePopularityLevel(currentRatio);
@@ -543,8 +548,8 @@ $(function() {
                 console.log(`Determined peak ratio ${peakRatio} at level ${peakPopularityLevel}`);
                 console.log(`Determined current ratio ${currentRatio} at level ${currentPopularityLevel}`);
                 console.log(`Determined era ${era} named ${ERA_NAMES[era]}`);
-                var peakPopularityName = `${POPULARITY_LEVEL_NAMES[peakPopularityLevel]} name (${formatPopularityLevel(peakRatio)})`;
-                var currentPopularityName = `${POPULARITY_LEVEL_NAMES[currentPopularityLevel]} name (${formatPopularityLevel(currentRatio)})`;
+                let peakPopularityName = `${POPULARITY_LEVEL_NAMES[peakPopularityLevel]} name (${formatPopularityLevel(peakRatio)})`;
+                let currentPopularityName = `${POPULARITY_LEVEL_NAMES[currentPopularityLevel]} name (${formatPopularityLevel(currentRatio)})`;
                 $("#verdictList").append(`<li>${name} is typically a ${genderName} name (${genderRatioMsg})</li>`);
                 $('#verdictList').append(`<li>At its peak in ${peak}, ${name} was a ${peakPopularityName}.</li>`);
                 $('#verdictList').append(`<li>Nowadays, ${name} is a ${currentPopularityName}.</li>`);

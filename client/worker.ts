@@ -1,41 +1,39 @@
-"use strict";
-function damerau_levenshtein(first, second) {
-    "use strict";
+function damerau_levenshtein(first: string, second: string): number {
     // TODO: Support non-BMP characters (like that's ever going to happen)
-    if (first == second) return 0;
-    var firstLen = first.length;
-    var secondLen = second.length;
-    if (firstLen == 0) return secondLen;
-    if (secondLen == 0) return firstLen;
+    if (first === second) return 0;
+    let firstLen = first.length;
+    let secondLen = second.length;
+    if (firstLen === 0) return secondLen;
+    if (secondLen === 0) return firstLen;
 
 
-    var distances = [];
-    for (var i = 0; i < firstLen + 2; i++) {
+    let distances: number[][] = [];
+    for (let i = 0; i < firstLen + 2; i++) {
         distances.push(Array(secondLen + 2).fill(0));
     }
     const maxDistance = firstLen + secondLen;
     distances[0][0] = maxDistance;
 
-    for (var i = 0; i < firstLen + 1; i++) {
+    for (let i = 0; i < firstLen + 1; i++) {
         distances[i + 1][0] = maxDistance;
         distances[i + 1][1] = i;
     }
-    for (var j = 0; j < secondLen + 1; j++) {
+    for (let j = 0; j < secondLen + 1; j++) {
         distances[0][j + 1] = maxDistance;
         distances[1][j + 1] = j;
     }
 
-    var chars = new Map();
+    let chars: Map<string, number> = new Map();
 
-    for (var i = 1; i < firstLen + 1; i++) {
-        var db = 0;
-        for (var j = 1; j < secondLen + 1; j++) {
-            var k = chars.get(second.charAt(j - 1));
-            if (typeof k == 'undefined') {
+    for (let i = 1; i < firstLen + 1; i++) {
+        let db = 0;
+        for (let j = 1; j < secondLen + 1; j++) {
+            let k = chars.get(second.charAt(j - 1));
+            if (k === undefined) {
                 k = 0;
             }
             const l = db;
-            var cost = 1;
+            let cost = 1;
             if (first[i - 1] == second[j - 1]) {
                 cost = 0;
                 db = j;
@@ -57,17 +55,25 @@ function damerau_levenshtein(first, second) {
     }
     return distances[firstLen + 1][secondLen + 1];
 }
+interface WorkerRequest {
+    targetName: string;
+    knownNames: string[];
+}
 const DEFAULT_SIMILAR_NAMES = 5;
-onmessage = function(e) {
+onmessage = function(e: MessageEvent<WorkerRequest>) {
     const name = e.data.targetName;
     const knownNames = e.data.knownNames;
-    var similarNames = knownNames.map(function(targetName) {
+    interface NameInfo {
+        name: string;
+        similarity: number;
+    }
+    let similarNames : NameInfo[] = knownNames.map(function(targetName) {
         const similarity = damerau_levenshtein(targetName, name);
         //console.log(`Determined similarity of ${targetName} => ${similarity}`);
         return { name: targetName, similarity: similarity };
     });
-    similarNames.sort(function(a, b) {
-        var cmp = a.similarity - b.similarity;
+    similarNames.sort((a, b) => {
+        let cmp = a.similarity - b.similarity;
         if (cmp == 0) {
             if (a.name < b.name) {
                 cmp = -1;
@@ -75,7 +81,7 @@ onmessage = function(e) {
                 cmp = 1;
             }
         }
-        return cmp
+        return cmp;
     });
     if (similarNames[0].name == name) {
         similarNames = similarNames.slice(1, DEFAULT_SIMILAR_NAMES + 1);

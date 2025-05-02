@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["DOM", "ES2020"],
+    "target": "ES2020",
+    "skipLibCheck": true,
+    "useDefineForClassFields": true,
+
+    /* type checking */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "outDir": "static/js"
+  },
+  "include": ["client"]
+}

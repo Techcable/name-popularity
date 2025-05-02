@@ -18,11 +18,11 @@ run: _check
 
 # runs all checks except formatting
 _check: && mypy
+    pnpm exec tsc --pretty
+    # lint
     -ruff check
 
 build: _check
-    # Build project (usually a wheel)
-    uv build
 
 # checks types
 mypy:

@@ -24,3 +24,18 @@ __pycache__
 
 # mypy
 .mypy_cache
+
+##
+## Javascript
+##
+
+# npm/pnpm
+/node_modules
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+
+# typescript
+/tsconfig.tsbuildinfo
+
+# compiled code
+/static/js

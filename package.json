@@ -1,0 +1,11 @@
+{
+  "name": "name-popularity",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/chart.js": "~2.7.57",
+    "@types/jquery": "^3.5.32",
+    "typescript": "^5.8.2"
+  }
+}
