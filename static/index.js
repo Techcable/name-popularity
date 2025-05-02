@@ -301,6 +301,7 @@ $(function() {
         }
     }
     function formatPopularityLevel(ratio) {
+        let meta = Metadata.assumeLoaded();
         if (ratio >= 1/1000) {
             return `about ${Math.ceil(ratio*1000)} in a thousand`
         } else if (ratio >= 1/10000) {
@@ -309,6 +310,8 @@ $(function() {
             return `about ${Math.ceil(ratio*10e6)} in a million`
         } else if (ratio >= 10e-9) {
             return `about ${Math.ceil(ratio*10e9)} in a billion`
+        } else if (ratio == 0) {
+            return `missing from ${meta.currentYear} data`
         } else {
             return `(internal error: invalid ratio ${ratio})`
         }
@@ -515,7 +518,7 @@ $(function() {
                     case 'male': {
                         peakRatio = maleMap.get(peak).ratio;
                         peakPopularityLevel = determinePopularityLevel(peakRatio);
-                        currentRatio = maleMap.get(meta.currentYear).ratio;
+                        currentRatio = maleMap.get(meta.currentYear)?.ratio ?? 0;
                         currentPopularityLevel = determinePopularityLevel(currentRatio);
                         era = determineEra(peak, maleMap);
                         genderName = "boy";
@@ -525,7 +528,7 @@ $(function() {
                     case 'female': {
                         peakRatio = femaleMap.get(peak).ratio;
                         peakPopularityLevel = determinePopularityLevel(peakRatio);
-                        currentRatio = femaleMap.get(meta.currentYear).ratio;
+                        currentRatio = femaleMap.get(meta.currentYear)?.ratio ?? 0;
                         currentPopularityLevel = determinePopularityLevel(currentRatio);
                         era = determineEra(peak, femaleMap);
                         genderName = "girl";
