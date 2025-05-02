@@ -92,10 +92,30 @@ $(function() {
             });
         }
     }
+    class ListKnownYearsRequest {
+        constructor() {}
+        run(callback) {
+            console.log(`Running request GET api/known_years`);
+            $.ajax({
+                url: "api/known_years",
+                method: "GET",
+                converters: {
+                    "text json": function(result) {
+                        return JSON.parse(result);
+                    }
+                }
+            }).done(callback)
+            .fail(function (jqXHR, textStatus, errorThrown) {
+                console.log("Failed: " + errorThrown);
+            }).always(function (a, textStatus, b) {
+                console.log("Final status: " + textStatus);
+            });
+        }
+    }
     class ListKnownNamesRequest {
         constructor() {}
         run(callback) {
-            console.log(`Running request ${JSON.stringify(this.json)}`);
+            console.log(`Running request GET api/known_names`);
             $.ajax({
                 url: "api/known_names",
                 method: "GET",
@@ -112,13 +132,47 @@ $(function() {
             });
         }
     }
+
+    class Metadata {
+        constructor(yearResponse) {
+            this.currentYear = yearResponse.latest_year;
+            this.minimumYear = yearResponse.earliest_year;
+            if (!Number.isInteger(this.currentYear)) throw new Error(`Invalid 'latest_year': ${yearResponse.latest_year}`);
+            this.defaultStartYear = 1940;
+            Object.freeze(this);
+        }
+        static INSTANCE = null;
+        static requireLoaded(action) {
+            if (this.INSTANCE === null) {
+                alert(`Can not ${action} while initial metadata is loading`);
+                return null;
+            } else {
+                return this.INSTANCE;
+            }
+        }
+        static assumeLoaded() {
+            if (this.INSTANCE === null) {
+                throw new Error("Expected metadata to already be loaded!");
+            }
+            return this.INSTANCE;
+        }
+    }
     /*
      * TODO: This is shitty code, I need to refactor it to be more object oriented.
      * In my defense I can't think straight in this pathetic excuse for a language
      */
-    const CURRENT_YEAR = 2020;
-    const DEFAULT_START_YEAR = 1940;
-    const MINIMUM_YEAR = 1880;
+
+    new ListKnownYearsRequest().run(function (response) {
+        console.assert(Metadata.INSTANCE === null, "Already initialized metadata");
+        const meta = new Metadata(response);
+        Metadata.INSTANCE = meta;
+        console.assert(meta.minimumYear === 1880, `Unexpected minimum year ${meta.minimumYear}`);
+        $("#yearRangeMessage").text(`Includes data from ${meta.minimumYear} to ${meta.currentYear}`);
+        $("#startYear").attr("min", meta.minimumYear);
+        $("#startYear").attr("max", meta.currentYear);
+        $("#startYear").attr("placeholder", meta.defaultStartYear);
+        console.log("Finished initalizing metadata");
+    })
     // One of Benjamin's original obsessive names (besides the last name Shemermino)
     const DEFAULT_NAME = "Salvatore";
     function debugMap(target) {
@@ -261,13 +315,14 @@ $(function() {
     }
     function currentStartYear() {
         var rawYear = $("#startYear").val();
+        const meta = Metadata.assumeLoaded();
         console.log(`Raw startYear ${rawYear}`);
         if (rawYear == "") {
-            rawYear = DEFAULT_START_YEAR.toString();
+            rawYear = meta.defaultStartYear.toString();
         }
         var year = Number.parseInt(rawYear);
         console.log(`Parsed year ${year} from ${rawYear}`)
-        if (!Number.isNaN(year) && year >= MINIMUM_YEAR && year < CURRENT_YEAR) {
+        if (!Number.isNaN(year) && year >= meta.minimumYear && year <= meta.currentYear) {
             return year
         }
         $("#startYear").val('');
@@ -317,9 +372,6 @@ $(function() {
             </tr>`)
         }
     }
-    $("#startYear").attr("min", MINIMUM_YEAR);
-    $("#startYear").attr("max", CURRENT_YEAR - 1);
-    $("#startYear").attr("placeholder", DEFAULT_START_YEAR);
     $("#targetNameForm").on('submit', function(event) {
         console.log(`Submitted ${currentName()}`);
         $("#loadButton").trigger('click');
@@ -329,10 +381,12 @@ $(function() {
     var similarityWorker = null;
     $("#loadButton").on('click', function() {
         console.log("Clicked");
+        const meta = Metadata.requireLoaded("load name data");
+        if (meta == null) return; // gave the message
         const name = currentName();
         const startYear = currentStartYear();
         if (startYear == null) return;
-        const years = [...Array(CURRENT_YEAR - startYear).keys()].map(i => i + startYear);
+        const years = [...Array(meta.currentYear - startYear + 1).keys()].map(i => i + startYear);
         $("#maleNameHeader").text(`Males named '${name}'`);
         $("#femaleNameHeader").text(`Females named '${name}'`);
         $("#similarNameHeader").text(`Names similar to '${name}'`);
@@ -430,7 +484,7 @@ $(function() {
                         xAxes: [{
                             ticks: {
                                 min: startYear,
-                                max: CURRENT_YEAR - 1
+                                max: meta.currentYear
                             }
                         }]
                     }
@@ -461,7 +515,7 @@ $(function() {
                     case 'male': {
                         peakRatio = maleMap.get(peak).ratio;
                         peakPopularityLevel = determinePopularityLevel(peakRatio);
-                        currentRatio = maleMap.get(CURRENT_YEAR - 1).ratio;
+                        currentRatio = maleMap.get(meta.currentYear).ratio;
                         currentPopularityLevel = determinePopularityLevel(currentRatio);
                         era = determineEra(peak, maleMap);
                         genderName = "boy";
@@ -471,7 +525,7 @@ $(function() {
                     case 'female': {
                         peakRatio = femaleMap.get(peak).ratio;
                         peakPopularityLevel = determinePopularityLevel(peakRatio);
-                        currentRatio = femaleMap.get(CURRENT_YEAR - 1).ratio;
+                        currentRatio = femaleMap.get(meta.currentYear).ratio;
                         currentPopularityLevel = determinePopularityLevel(currentRatio);
                         era = determineEra(peak, femaleMap);
                         genderName = "girl";

@@ -38,8 +38,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(lifespan=lifespan, openapi_url=None)
 
 
+class KnownYearsResponse(BaseModel):
+    # first and last year inclusive
+    earliest_year: int
+    latest_year: int
+
+
+@app.get("/api/known_years")
+def known_years() -> KnownYearsResponse:
+    year_range = database.known_years
+    assert year_range.step == 1
+    return KnownYearsResponse(
+        earliest_year=year_range.start,
+        # exclusive -> inclusive
+        latest_year=year_range.stop - 1,
+    )
+
+
 @app.get("/api/known_names")
-def root() -> list[str]:
+def known_names() -> list[str]:
     return list(database.list_known_names())
 
 

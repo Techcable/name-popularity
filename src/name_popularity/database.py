@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 
 import cachebox
 from sqlalchemy import Engine, text
@@ -52,6 +53,13 @@ class NameDatabase:
                 names.add(name)
             self._cached_known_names = names
             return names.copy()
+
+    @cached_property
+    def known_years(self) -> range:
+        with self.engine.connect() as connection:
+            result = connection.execute(text("SELECT MIN(year), MAX(year) from years"))
+            earliest, latest = result.one()
+            return range(earliest, latest + 1)
 
     @cachebox.cachedmethod(cachebox.FIFOCache(maxsize=4096))
     def load_year_stats(self, year: int) -> GenderMap[YearStats]:
