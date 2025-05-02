@@ -6,7 +6,7 @@ from typing import AsyncIterator
 
 import sqlalchemy
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 from starlette.staticfiles import StaticFiles
 from techcable.orderedset import OrderedSet
@@ -16,7 +16,10 @@ from name_popularity.database import NameDatabase, NameInfo
 
 
 class Settings(BaseSettings):
-    database_url: str
+    database_url: str = Field(
+        # use sqlite by default
+        default="sqlite:///./data/names.sqlite"
+    )
 
 
 settings = Settings()
