@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import AsyncIterator
 
 import sqlalchemy
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 from starlette.staticfiles import StaticFiles
@@ -44,8 +45,16 @@ class KnownYearsResponse(BaseModel):
     latest_year: int
 
 
+def apply_cache_control(response: Response, delta: timedelta) -> None:
+    """Set the Cache-Control header to a specific max-age"""
+    assert delta.total_seconds() >= 0
+    assert isinstance(delta, timedelta)
+    response.headers["Cache-Control"] = f"max-age={round(delta.total_seconds())}"
+
+
 @app.get("/api/known_years")
-def known_years() -> KnownYearsResponse:
+def known_years(response: Response) -> KnownYearsResponse:
+    apply_cache_control(response, timedelta(days=7))
     year_range = database.known_years
     assert year_range.step == 1
     return KnownYearsResponse(
@@ -56,7 +65,8 @@ def known_years() -> KnownYearsResponse:
 
 
 @app.get("/api/known_names")
-def known_names() -> list[str]:
+def known_names(response: Response) -> list[str]:
+    apply_cache_control(response, timedelta(days=7))
     return list(database.list_known_names())
 
 
