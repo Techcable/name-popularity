@@ -167,7 +167,7 @@
     // One of Benjamin's original obsessive names (besides the last name Shemermino)
     const DEFAULT_NAME = "Salvatore";
     function currentName(): string {
-        let name = document.getElementById("targetName")!!.textContent!!;
+        let name = (<HTMLInputElement>document.getElementById("targetName"))!!.value!!;
         console.log(`Raw targetName ${name}`)
         if (name == "") {
             name = DEFAULT_NAME;
@@ -288,8 +288,8 @@
         }
     }
     function currentStartYear(): number | null {
-        let startYearElement = document.getElementById("startYear")!!;
-        let rawYear = startYearElement!!.textContent!!;
+        let startYearElement = document.getElementById("startYear")!! as HTMLInputElement;
+        let rawYear = startYearElement!!.value!!;
         const meta = Metadata.assumeLoaded();
         console.log(`Raw startYear ${rawYear}`);
         if (rawYear == "") {
