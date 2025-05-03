@@ -558,7 +558,7 @@
                         verdictList.append(item);
                     }
 
-                    appendListItem(`{name} is typically a ${genderName} name (${genderRatioMsg})`);
+                    appendListItem(`${name} is typically a ${genderName} name (${genderRatioMsg})`);
                     appendListItem(`At its peak in ${peak}, ${name} was a ${peakPopularityName}.`);
                     appendListItem(`Nowadays, ${name} is a ${currentPopularityName}.`);
                     appendListItem(`${name} is a ${ERA_NAMES[era]} name.`)
